@@ -7,10 +7,10 @@ import json
 import time
 from datetime import datetime, timedelta, timezone, time as dt_time
 import FinanceDataReader as fdr
-import io
 from bs4 import BeautifulSoup
 import joblib
 import os
+import tensorflow as tf
 
 # -----------------------------------------------------------------------------
 # [설정] 한국투자증권 API KEY
@@ -27,8 +27,8 @@ except KeyError:
 
 URL_BASE = "https://openapi.koreainvestment.com:9443" 
 
-st.set_page_config(layout="wide", page_title="국내주식 실시간 단타 스캐너")
-st.title("🚀 실시간 단타 및 시장 동향 대시보드")
+st.set_page_config(layout="wide", page_title="국내주식 실시간 딥러닝 스캐너")
+st.title("🚀 실시간 딥러닝 단타 및 시장 동향 대시보드")
 
 KST = timezone(timedelta(hours=9))
 
@@ -177,9 +177,6 @@ def create_pro_chart(df, title, color_hex):
     )
     return fig
 
-# -----------------------------------------------------------------------------
-# 🌙 애프터 마켓 데이터 수집 (철벽 방어 버전)
-# -----------------------------------------------------------------------------
 @st.cache_data(ttl=60, show_spinner=False)
 def fetch_after_market_data(top30_df):
     if top30_df.empty: return pd.DataFrame(columns=['종목코드', '시간외 현재가', '시간외 등락률', '시간외 거래량', '_sort_ratio_num'])
@@ -215,9 +212,6 @@ def fetch_after_market_data(top30_df):
     if df.empty: df = pd.DataFrame(columns=['종목코드', '시간외 현재가', '시간외 등락률', '시간외 거래량', '_sort_ratio_num'])
     return df
 
-# -----------------------------------------------------------------------------
-# ☀️ 프리마켓(예상 체결가) 데이터 수집 (철벽 방어 버전)
-# -----------------------------------------------------------------------------
 @st.cache_data(ttl=60, show_spinner=False)
 def fetch_pre_market_data(top30_df):
     if top30_df.empty: return pd.DataFrame(columns=['종목코드', '☀️ 예상 체결가', '☀️ 예상 갭상승률', '☀️ 예상 거래량', '_sort_ratio_num'])
@@ -250,7 +244,7 @@ def fetch_pre_market_data(top30_df):
                     '☀️ 예상 거래량': f"{int(pre_vol):,}" if pre_price > 0 else "0", 
                     '_sort_ratio_num': pre_ratio
                 })
-            time.sleep(0.2) 
+            time.sleep(0.1) 
         except: 
             pre_market_results.append({'종목코드': code, '☀️ 예상 체결가': "에러", '☀️ 예상 갭상승률': "에러", '☀️ 예상 거래량': "에러", '_sort_ratio_num': 0.0})
         my_bar.progress((i + 1) / len(top30_df))
@@ -310,44 +304,35 @@ if st.button("🔄 실시간 데이터 업데이트 (수동)"):
 
 st.markdown("---")
 
-# -----------------------------------------------------------------------------
-# 🤖 [핵심 로직] 시간에 따른 스위치 자동화 (오토 파일럿)
-# -----------------------------------------------------------------------------
 now_time = datetime.now(KST).time()
-
-# 시간대 정의
 time_pre_start = dt_time(8, 30)
 time_reg_start = dt_time(9, 0)
 time_after_start = dt_time(15, 30)
 time_after_end = dt_time(18, 0)
 
-# 기본 상태값 설정 (장 마감 상태를 기본으로)
 default_auto = False
 default_pre = False
 default_after = True
 
 if time_pre_start <= now_time < time_reg_start:
-    # 08:30 ~ 08:59 (프리마켓)
     default_auto = True
     default_pre = True
     default_after = False
 elif time_reg_start <= now_time < time_after_start:
-    # 09:00 ~ 15:29 (정규장)
     default_auto = True
     default_pre = False
     default_after = False
 elif time_after_start <= now_time < time_after_end:
-    # 15:30 ~ 17:59 (애프터 마켓)
     default_auto = True
     default_pre = False
     default_after = True
 
-st.info("🤖 **오토 파일럿 작동 중:** 현재 시각에 맞춰 최적의 모드(프리마켓/정규장/애프터마켓)가 자동으로 켜집니다. (원하시면 수동으로 조작도 가능합니다.)")
+st.info("🤖 **오토 파일럿 작동 중:** 현재 시각에 맞춰 최적의 모드(프리마켓/정규장/애프터마켓)가 자동으로 켜집니다.")
 
 col_t1, col_t2, col_t3 = st.columns(3)
 with col_t1: auto_refresh = st.toggle("⏱️ 1분 자동 스캐닝 켜기", value=default_auto)
-with col_t2: pre_market_mode = st.toggle("☀️ 프리마켓 (08:30~09:00 동시호가 갭상승)", value=default_pre)
-with col_t3: after_market_mode = st.toggle("🌙 애프터 마켓 (15:30~18:00 시간외 단일가)", value=default_after)
+with col_t2: pre_market_mode = st.toggle("☀️ 프리마켓 (08:30~09:00 동시호가)", value=default_pre)
+with col_t3: after_market_mode = st.toggle("🌙 애프터 마켓 (15:30~18:00 시간외)", value=default_after)
 
 if auto_refresh:
     try:
@@ -359,28 +344,88 @@ if auto_refresh:
         pass
 
 if pre_market_mode: 
-    st.subheader("🎯 오늘 아침 시초가 타겟 Top 30 (장전 예상 갭상승)")
+    st.subheader("🎯 오늘 아침 시초가 타겟 (장전 예상 갭상승)")
 elif after_market_mode: 
-    st.subheader("🎯 시간외 단일가 및 내일 시초가 타겟 Top 30")
+    st.subheader("🎯 시간외 단일가 및 내일 시초가 타겟")
 else: 
-    st.subheader("🎯 실시간 단타 타겟 Top 30 (AI 상승 예측 랭킹 순)")
+    st.subheader("🎯 실시간 단타 타겟 (딥러닝 10분 상승 예측 스코어)")
 
 df_universe = get_kis_top_trading_value_stocks()
 
 if not df_universe.empty:
-    filtered_df = df_universe[df_universe['등락률'] > -2.0].copy()
+    # -------------------------------------------------------------------------
+    # 🚀 [딥러닝 통합] 타이트 필터링 및 LSTM 예측 로직
+    # -------------------------------------------------------------------------
+    # 조건: 상승 흐름을 탄 거래대금 최상위 15개 종목만 추출 (API 서버 밴 방어)
+    filtered_df = df_universe[df_universe['등락률'] >= 1.0].copy()
+    filtered_df = filtered_df.sort_values(by='거래대금', ascending=False).head(15)
 
-    X_live = filtered_df[['등락률', '거래대금', '현재가']].fillna(0)
-    model_path = "stock_dual_model.pkl" 
-    if os.path.exists(model_path):
+    @st.cache_resource
+    def load_lstm_assets():
         try:
-            dual_models = joblib.load(model_path)
-            filtered_df['10분_상승예측(%)'] = np.round(dual_models['model_10min'].predict(X_live), 2)
-        except: 
-            filtered_df['10분_상승예측(%)'] = 0.0
-    else: 
+            model = tf.keras.models.load_model("stock_lstm_model.h5")
+            scaler = joblib.load("lstm_scaler.pkl")
+            return model, scaler
+        except Exception as e:
+            return None, None
+
+    lstm_model, lstm_scaler = load_lstm_assets()
+
+    if lstm_model is not None and lstm_scaler is not None:
+        my_bar = st.progress(0, text="🧠 딥러닝 모델이 대장주 15개의 1분봉 패턴을 분석 중입니다...")
+        ai_scores = []
+        
+        url_min = f"{URL_BASE}/uapi/domestic-stock/v1/quotations/inquire-time-itemchartprice"
+        headers_min = get_common_headers("FHKST03010200")
+        
+        for i, row in filtered_df.iterrows():
+            code = row['종목코드']
+            params_min = {
+                "FID_ETC_CLS_CODE": "", "FID_COND_MRKT_DIV_CODE": "J", 
+                "FID_INPUT_ISCD": code, 
+                "FID_INPUT_HOUR_1": datetime.now(KST).strftime("%H%M%S"), 
+                "FID_PW_DATA_INCU_YN": "N"
+            }
+            
+            try:
+                res = requests.get(url_min, headers=headers_min, params=params_min)
+                res_data = res.json()
+                
+                if res_data['rt_cd'] == '0' and 'output2' in res_data:
+                    # KIS API는 최신순으로 오므로 [::-1]로 뒤집어서 과거->현재 순으로 맞춤
+                    recent_10_mins = res_data['output2'][:10][::-1] 
+                    
+                    if len(recent_10_mins) == 10:
+                        df_min_temp = pd.DataFrame({
+                            "Open": [float(m['stck_oprc']) for m in recent_10_mins],
+                            "High": [float(m['stck_hgpr']) for m in recent_10_mins],
+                            "Low": [float(m['stck_lwpr']) for m in recent_10_mins],
+                            "Close": [float(m['stck_prpr']) for m in recent_10_mins],
+                            "Volume": [float(m['cntg_vol']) for m in recent_10_mins]
+                        })
+                        
+                        scaled_min = lstm_scaler.transform(df_min_temp)
+                        X_live_input = np.expand_dims(scaled_min, axis=0) # (1, 10, 5) 형태로 변환
+                        
+                        pred = lstm_model.predict(X_live_input, verbose=0)
+                        ai_scores.append(np.round(pred[0][0], 2))
+                    else:
+                        ai_scores.append(0.0)
+                else:
+                    ai_scores.append(0.0)
+            except Exception as e:
+                ai_scores.append(0.0)
+                
+            time.sleep(0.1) # KIS API 호출 제한 방어
+            my_bar.progress((i + 1) / len(filtered_df))
+            
+        my_bar.empty()
+        filtered_df['10분_상승예측(%)'] = ai_scores
+    else:
+        st.warning("⚠️ LSTM 모델이 없어 기본 수식으로 대체합니다. (오프라인 학습을 먼저 진행하세요)")
         filtered_df['10분_상승예측(%)'] = ((filtered_df['등락률'] * 0.5) + np.log1p(filtered_df['거래대금'])).round(2)
 
+    # 데이터 가공
     filtered_df['테마'] = filtered_df['종목명'].apply(get_theme_icon)
     filtered_df['단기_목표가'] = (filtered_df['현재가'] * 1.03).astype(int)
     filtered_df['손절가'] = (filtered_df['현재가'] * 0.98).astype(int)
@@ -392,7 +437,7 @@ if not df_universe.empty:
         
     filtered_df['매매상태'] = filtered_df.apply(detect_signal, axis=1)
     
-    top_30 = filtered_df.sort_values(by='10분_상승예측(%)', ascending=False).head(30)
+    top_30 = filtered_df.sort_values(by='10분_상승예측(%)', ascending=False)
     
     if pre_market_mode:
         extra_df = fetch_pre_market_data(top_30)
@@ -433,7 +478,7 @@ else:
     output_df = pd.DataFrame()
 
 # -----------------------------------------------------------------------------
-# 종목 클릭 시 차트 및 보안관 연동
+# 종목 클릭 시 차트 및 보안관 연동 (기존 로직 유지)
 # -----------------------------------------------------------------------------
 st.markdown("---")
 selected_idx = selected_rows.selection.rows[0] if (hasattr(selected_rows, 'selection') and len(selected_rows.selection.rows) > 0) else 0
