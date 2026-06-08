@@ -1,9 +1,10 @@
-```text
 streamlit
 pandas
 numpy
 plotly
+requests
 finance-datareader
 beautifulsoup4
 scikit-learn
+joblib
 tensorflow-cpu
