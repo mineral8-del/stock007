@@ -9,3 +9,4 @@ streamlit-autorefresh
 beautifulsoup4
 joblib
 scikit-learn
+tensorflow-cpu
