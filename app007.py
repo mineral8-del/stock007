@@ -386,7 +386,7 @@ if not df_universe.empty:
         url_min = f"{URL_BASE}/uapi/domestic-stock/v1/quotations/inquire-time-itemchartprice"
         headers_min = get_common_headers("FHKST03010200")
         
-        for i, row in filtered_df.iterrows():
+        for i, (idx, row) in enumerate(filtered_df.iterrows()):
             code = row['종목코드']
             params_min = {
                 "FID_ETC_CLS_CODE": "", "FID_COND_MRKT_DIV_CODE": "J", 
