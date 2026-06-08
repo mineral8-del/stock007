@@ -371,7 +371,7 @@ if not df_universe.empty:
             if "lstm_scaler.pkl" not in files:
                 st.error("❌ 'lstm_scaler.pkl' 파일이 리포지토리에 없습니다!")
 
-            model = tf.keras.models.load_model("stock_lstm_model.h5")
+            model = tf.keras.models.load_model("stock_lstm_model.h5", compile=False)
             scaler = joblib.load("lstm_scaler.pkl")
             return model, scaler
         except Exception as e:
