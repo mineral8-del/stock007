@@ -457,7 +457,7 @@ if not df_universe.empty:
     output_dict = {
         '테마': top_30['테마'],
         '실시간 상태': top_30['매매상태'],
-        'AI 예측스코어': top_30['10분_상승예측(%)'].apply(lambda x: f"🚀 {x}점"), 
+        'AI 예측스코어': top_30['10분_상승예측(%)'].apply(lambda x: f"🚀 {float(x):.2f}점"), 
         '종목명': top_30['종목명'],
         '전일 종가(현재가)': top_30['현재가'].apply(lambda x: f"{int(x):,} 원"),
         '전일 상승률': top_30['등락률'].apply(lambda x: f"+{x:.2f} %"),
