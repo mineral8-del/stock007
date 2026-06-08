@@ -360,13 +360,28 @@ if not df_universe.empty:
     filtered_df = df_universe[df_universe['등락률'] >= 1.0].copy()
     filtered_df = filtered_df.sort_values(by='거래대금', ascending=False).head(15)
 
-    @st.cache_resource
+@st.cache_resource(ttl=3600)  # 캐시 옵션 약간 수정
     def load_lstm_assets():
         try:
+            import os
+            # 1. 터미널 경로가 맞는지 화면에 출력해 봅니다.
+            st.info(f"📂 현재 실행 경로: {os.getcwd()}")
+            
+            # 2. 파일이 진짜 있는지 확인합니다.
+            files = os.listdir()
+            if "stock_lstm_model.h5" not in files:
+                st.error("❌ 'stock_lstm_model.h5' 파일이 현재 폴더에 없습니다!")
+            if "lstm_scaler.pkl" not in files:
+                st.error("❌ 'lstm_scaler.pkl' 파일이 현재 폴더에 없습니다!")
+
+            # 3. 모델과 스케일러 로드 시도
             model = tf.keras.models.load_model("stock_lstm_model.h5")
             scaler = joblib.load("lstm_scaler.pkl")
+            st.success("✅ 딥러닝 모델 및 스케일러 로드 완료!")
             return model, scaler
         except Exception as e:
+            # 4. 실패했다면 진짜 에러 메시지를 화면에 빨간색으로 출력합니다.
+            st.error(f"🚨 모델 로드 중 치명적 오류 발생: {e}")
             return None, None
 
     lstm_model, lstm_scaler = load_lstm_assets()
