@@ -100,7 +100,8 @@ def get_kis_top_trading_value_stocks():
             if data['rt_cd'] == '0' and 'output' in data:
                 df_temp = pd.DataFrame(data['output'])[['hts_kor_isnm', 'mksc_shrn_iscd', 'stck_prpr', 'prdy_ctrt', 'acml_tr_pbmn']]
                 df_list.append(df_temp)
-        except: continue
+        except: 
+            continue
             
     if not df_list: return pd.DataFrame()
         
@@ -120,48 +121,60 @@ def get_kis_top_trading_value_stocks():
 @st.cache_data(ttl=15)
 def get_foreign_investor_trend():
     try:
-        # KIS API의 장 마감 집계 지연 문제를 회피하기 위해 
-        # 네이버 금융 코스피 종합 차트 페이지에서 실시간 외국인 수급을 스크래핑합니다.
         url = "https://finance.naver.com/sise/sise_index.naver?code=KOSPI"
         headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
         
         res = requests.get(url, headers=headers, timeout=5)
         soup = BeautifulSoup(res.text, 'html.parser')
         
-        # '투자자별 매매동향' 항목의 모든 <dd> 태그 탐색
         for dd in soup.find_all('dd'):
             text = dd.get_text(strip=True)
-            
-            # "외국인"으로 시작하고 "억"이 포함된 텍스트 찾기 (예: "외국인-1,234억" 또는 "외국인1,234억")
             if text.startswith("외국인") and "억" in text:
-                # 숫자만 추출하기 위해 불필요한 문자 제거
                 clean_str = text.replace("외국인", "").replace("억", "").replace(",", "").strip()
-                
-                # 추출된 문자열을 float으로 변환하여 반환 (억 단위)
                 return float(clean_str)
                 
     except Exception as e:
-        # 스크래핑 중 에러가 발생해도 프로그램이 멈추지 않도록 방어
         st.error(f"⚠️ 실시간 수급 스크래핑 오류: {e}")
         
     return 0.0
+
 @st.cache_data(ttl=60)
 def get_market_indices_v2():
     end_date = datetime.now(KST).strftime('%Y-%m-%d')
     start_date = (datetime.now(KST) - timedelta(days=20)).strftime('%Y-%m-%d')
-    try: ks, kq = fdr.DataReader('KS11', start_date, end_date), fdr.DataReader('KQ11', start_date, end_date) 
-    except: ks, kq = pd.DataFrame(), pd.DataFrame()
-    try: usd = fdr.DataReader('USD/KRW', start_date, end_date)
-    except: usd = pd.DataFrame()
+    try: 
+        ks, kq = fdr.DataReader('KS11', start_date, end_date), fdr.DataReader('KQ11', start_date, end_date) 
+    except: 
+        ks, kq = pd.DataFrame(), pd.DataFrame()
+        
+    try: 
+        usd = fdr.DataReader('USD/KRW', start_date, end_date)
+    except: 
+        usd = pd.DataFrame()
+        
     return ks, kq, usd
 
 def create_pro_chart(df, title, color_hex):
     if df.empty: return go.Figure().update_layout(title="데이터 로드 실패")
-    current_val, prev_val = df['Close'].iloc[-1], df['Close'].iloc[-2] if len(df) > 1 else df['Close'].iloc[-1]
+    current_val = df['Close'].iloc[-1]
+    prev_val = df['Close'].iloc[-2] if len(df) > 1 else df['Close'].iloc[-1]
     delta = current_val - prev_val
+    
     fig = go.Figure()
-    fig.add_trace(go.Scatter(x=df.index, y=df['Close'], mode='lines', line=dict(color=color_hex, width=3), fill='tozeroy', fillcolor=f"rgba({int(color_hex[1:3],16)}, {int(color_hex[3:5],16)}, {int(color_hex[5:7],16)}, 0.1)", name=title))
-    fig.update_layout(title=dict(text=f"<b>{title}</b> <span style='font-size:14px; color:{'#ff4b4b' if delta >=0 else '#0068c9'}'>{current_val:,.2f} ({(delta / prev_val) * 100:+.2f}%)</span>", x=0.05, y=0.85), height=280, margin=dict(l=10, r=10, t=50, b=10), template="plotly_dark", paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", xaxis=dict(showgrid=False), yaxis=dict(showgrid=True, gridcolor='rgba(255,255,255,0.05)', side='right'), hovermode="x unified")
+    fig.add_trace(go.Scatter(
+        x=df.index, y=df['Close'], mode='lines', 
+        line=dict(color=color_hex, width=3), fill='tozeroy', 
+        fillcolor=f"rgba({int(color_hex[1:3],16)}, {int(color_hex[3:5],16)}, {int(color_hex[5:7],16)}, 0.1)", 
+        name=title
+    ))
+    
+    fig.update_layout(
+        title=dict(text=f"<b>{title}</b> <span style='font-size:14px; color:{'#ff4b4b' if delta >=0 else '#0068c9'}'>{current_val:,.2f} ({(delta / prev_val) * 100:+.2f}%)</span>", x=0.05, y=0.85), 
+        height=280, margin=dict(l=10, r=10, t=50, b=10), template="plotly_dark", 
+        paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", 
+        xaxis=dict(showgrid=False), yaxis=dict(showgrid=True, gridcolor='rgba(255,255,255,0.05)', side='right'), 
+        hovermode="x unified"
+    )
     return fig
 
 # -----------------------------------------------------------------------------
@@ -186,13 +199,17 @@ def fetch_after_market_data(top30_df):
                 after_ratio = float(data['output'].get('ovtm_untp_prdy_ctrt', 0))
                 after_vol = float(data['output'].get('ovtm_untp_vol', 0))
                 after_market_results.append({
-                    '종목코드': code, '시간외 현재가': f"{int(after_price):,} 원" if after_price > 0 else "-",
+                    '종목코드': code, 
+                    '시간외 현재가': f"{int(after_price):,} 원" if after_price > 0 else "-",
                     '시간외 등락률': f"{after_ratio:+.2f} %" if after_price > 0 else "-",
-                    '시간외 거래량': f"{int(after_vol):,}" if after_price > 0 else "-", '_sort_ratio_num': after_ratio
+                    '시간외 거래량': f"{int(after_vol):,}" if after_price > 0 else "-", 
+                    '_sort_ratio_num': after_ratio
                 })
             time.sleep(0.1) 
-        except: after_market_results.append({'종목코드': code, '시간외 현재가': "-", '시간외 등락률': "-", '시간외 거래량': "-", '_sort_ratio_num': 0.0})
+        except: 
+            after_market_results.append({'종목코드': code, '시간외 현재가': "-", '시간외 등락률': "-", '시간외 거래량': "-", '_sort_ratio_num': 0.0})
         my_bar.progress((i + 1) / len(top30_df))
+        
     my_bar.empty()
     df = pd.DataFrame(after_market_results)
     if df.empty: df = pd.DataFrame(columns=['종목코드', '시간외 현재가', '시간외 등락률', '시간외 거래량', '_sort_ratio_num'])
@@ -221,15 +238,23 @@ def fetch_pre_market_data(top30_df):
                     if val in [None, "", " "]: return 0.0
                     try: return float(val)
                     except: return 0.0
-                pre_price, pre_ratio, pre_vol = safe_float(out.get('antc_cnpr', 0)), safe_float(out.get('antc_cntg_prdy_ctrt', 0)), safe_float(out.get('antc_cntg_vol', 0))
+                    
+                pre_price = safe_float(out.get('antc_cnpr', 0))
+                pre_ratio = safe_float(out.get('antc_cntg_prdy_ctrt', 0))
+                pre_vol = safe_float(out.get('antc_cntg_vol', 0))
+                
                 pre_market_results.append({
-                    '종목코드': code, '☀️ 예상 체결가': f"{int(pre_price):,} 원" if pre_price > 0 else "데이터 없음",
+                    '종목코드': code, 
+                    '☀️ 예상 체결가': f"{int(pre_price):,} 원" if pre_price > 0 else "데이터 없음",
                     '☀️ 예상 갭상승률': f"{pre_ratio:+.2f} %" if pre_price > 0 else "0.00 %",
-                    '☀️ 예상 거래량': f"{int(pre_vol):,}" if pre_price > 0 else "0", '_sort_ratio_num': pre_ratio
+                    '☀️ 예상 거래량': f"{int(pre_vol):,}" if pre_price > 0 else "0", 
+                    '_sort_ratio_num': pre_ratio
                 })
             time.sleep(0.2) 
-        except: pre_market_results.append({'종목코드': code, '☀️ 예상 체결가': "에러", '☀️ 예상 갭상승률': "에러", '☀️ 예상 거래량': "에러", '_sort_ratio_num': 0.0})
+        except: 
+            pre_market_results.append({'종목코드': code, '☀️ 예상 체결가': "에러", '☀️ 예상 갭상승률': "에러", '☀️ 예상 거래량': "에러", '_sort_ratio_num': 0.0})
         my_bar.progress((i + 1) / len(top30_df))
+        
     my_bar.empty()
     df = pd.DataFrame(pre_market_results)
     if df.empty: df = pd.DataFrame(columns=['종목코드', '☀️ 예상 체결가', '☀️ 예상 갭상승률', '☀️ 예상 거래량', '_sort_ratio_num'])
@@ -249,15 +274,28 @@ with m_col3: st.plotly_chart(create_pro_chart(usd_df, "USD/KRW", "#636EFA"), use
 st.markdown("---")
 st.subheader("💼 외국인 선물 수급 및 시장 주도 상태")
 
-if 'foreign_futures_net' not in st.session_state: st.session_state.foreign_futures_net = get_foreign_investor_trend()
+if 'foreign_futures_net' not in st.session_state: 
+    st.session_state.foreign_futures_net = get_foreign_investor_trend()
 foreign_futures_net = st.session_state.foreign_futures_net
 
 if foreign_futures_net > 0:
-    value_str, program_intensity, trade_signal, delta_msg, score_color = f"+{foreign_futures_net:,} 억 원", min(100, int(50 + (foreign_futures_net / 10))), "🚀 외국인 선물 대량 매수 중!", "매수 우위", "normal"
+    value_str = f"+{foreign_futures_net:,} 억 원"
+    program_intensity = min(100, int(50 + (foreign_futures_net / 10)))
+    trade_signal = "🚀 외국인 선물 대량 매수 중!"
+    delta_msg = "매수 우위"
+    score_color = "normal"
 elif foreign_futures_net < 0:
-    value_str, program_intensity, trade_signal, delta_msg, score_color = f"{foreign_futures_net:,} 억 원", max(0, int(50 - (abs(foreign_futures_net) / 10))), "⚠️ 외국인 선물 강한 매도세!", "매도 우위", "inverse"
+    value_str = f"{foreign_futures_net:,} 억 원"
+    program_intensity = max(0, int(50 - (abs(foreign_futures_net) / 10)))
+    trade_signal = "⚠️ 외국인 선물 강한 매도세!"
+    delta_msg = "매도 우위"
+    score_color = "inverse"
 else:
-    value_str, program_intensity, trade_signal, delta_msg, score_color = "0.0 억 원", 50, "⏸️ 수급 데이터 대기 중", "데이터 없음", "off"
+    value_str = "0.0 억 원"
+    program_intensity = 50
+    trade_signal = "⏸️ 수급 데이터 대기 중"
+    delta_msg = "데이터 없음"
+    score_color = "off"
 
 col_m1, col_m2 = st.columns(2)
 col_m1.metric(label="외국인 주식선물 순매수 금액", value=value_str, delta=delta_msg, delta_color=score_color)
@@ -317,11 +355,15 @@ if auto_refresh:
         st_autorefresh(interval=60000, limit=1000, key="auto_scanner_refresh")
         st.toast("🔄 스캐너가 실시간(1분 단위)으로 감시 중입니다!", icon="👀")
         get_kis_top_trading_value_stocks.clear()
-    except ImportError: pass
+    except ImportError: 
+        pass
 
-if pre_market_mode: st.subheader("🎯 오늘 아침 시초가 타겟 Top 30 (장전 예상 갭상승)")
-elif after_market_mode: st.subheader("🎯 시간외 단일가 및 내일 시초가 타겟 Top 30")
-else: st.subheader("🎯 실시간 단타 타겟 Top 30 (AI 상승 예측 랭킹 순)")
+if pre_market_mode: 
+    st.subheader("🎯 오늘 아침 시초가 타겟 Top 30 (장전 예상 갭상승)")
+elif after_market_mode: 
+    st.subheader("🎯 시간외 단일가 및 내일 시초가 타겟 Top 30")
+else: 
+    st.subheader("🎯 실시간 단타 타겟 Top 30 (AI 상승 예측 랭킹 순)")
 
 df_universe = get_kis_top_trading_value_stocks()
 
@@ -334,8 +376,10 @@ if not df_universe.empty:
         try:
             dual_models = joblib.load(model_path)
             filtered_df['10분_상승예측(%)'] = np.round(dual_models['model_10min'].predict(X_live), 2)
-        except: filtered_df['10분_상승예측(%)'] = 0.0
-    else: filtered_df['10분_상승예측(%)'] = ((filtered_df['등락률'] * 0.5) + np.log1p(filtered_df['거래대금'])).round(2)
+        except: 
+            filtered_df['10분_상승예측(%)'] = 0.0
+    else: 
+        filtered_df['10분_상승예측(%)'] = ((filtered_df['등락률'] * 0.5) + np.log1p(filtered_df['거래대금'])).round(2)
 
     filtered_df['테마'] = filtered_df['종목명'].apply(get_theme_icon)
     filtered_df['단기_목표가'] = (filtered_df['현재가'] * 1.03).astype(int)
@@ -345,6 +389,7 @@ if not df_universe.empty:
         if row['등락률'] >= 7.0 and row['거래대금'] > 50000: return "🔥 돌파매매"
         elif 1.0 <= row['등락률'] < 5.0 and row['거래대금'] > 20000: return "💧 눌림목"
         return "▪️ 관망"
+        
     filtered_df['매매상태'] = filtered_df.apply(detect_signal, axis=1)
     
     top_30 = filtered_df.sort_values(by='10분_상승예측(%)', ascending=False).head(30)
@@ -394,33 +439,59 @@ st.markdown("---")
 selected_idx = selected_rows.selection.rows[0] if (hasattr(selected_rows, 'selection') and len(selected_rows.selection.rows) > 0) else 0
 
 if not output_df.empty and selected_idx < len(output_df):
-    target_code, target_name, target_theme = output_df.iloc[selected_idx]['종목코드'], output_df.iloc[selected_idx]['종목명'], output_df.iloc[selected_idx]['테마']
-    target_price, target_change, target_vol = output_df.iloc[selected_idx]['전일 종가(현재가)'], output_df.iloc[selected_idx]['전일 상승률'], output_df.iloc[selected_idx]['거래대금(백만)']
+    target_code = output_df.iloc[selected_idx]['종목코드']
+    target_name = output_df.iloc[selected_idx]['종목명']
+    target_theme = output_df.iloc[selected_idx]['테마']
+    target_price = output_df.iloc[selected_idx]['전일 종가(현재가)']
+    target_change = output_df.iloc[selected_idx]['전일 상승률']
+    target_vol = output_df.iloc[selected_idx]['거래대금(백만)']
     
     st.markdown(f"<div style='padding:10px 0; border-bottom:1px solid #ddd; margin-bottom:15px;'><span style='font-size:20px; font-weight:bold;'>{target_name}</span> <span style='font-size:14px; color:#555;'>[{target_theme}]</span><span style='font-size:14px; font-weight:bold; margin-left:15px;'>{target_price}</span><span style='font-size:14px; color:#e12929; margin-left:5px;'>{target_change}</span><span style='font-size:14px; color:#888; margin-left:10px;'>누적 거래대금 {target_vol}백만</span></div>", unsafe_allow_html=True)
     
     with st.spinner(f"[{target_name}] 1분봉 데이터 및 고점 폭락 위험성을 정밀 진단 중입니다..."):
         url = f"{URL_BASE}/uapi/domestic-stock/v1/quotations/inquire-time-itemchartprice"
         headers = get_common_headers("FHKST03010200")
-        params = {"FID_ETC_CLS_CODE": "", "FID_COND_MRKT_DIV_CODE": "J", "FID_INPUT_ISCD": target_code, "FID_INPUT_HOUR_1": datetime.now(KST).strftime("%H%M%S"), "FID_PW_DATA_INCU_YN": "Y"}
+        params = {
+            "FID_ETC_CLS_CODE": "", "FID_COND_MRKT_DIV_CODE": "J", 
+            "FID_INPUT_ISCD": target_code, 
+            "FID_INPUT_HOUR_1": datetime.now(KST).strftime("%H%M%S"), 
+            "FID_PW_DATA_INCU_YN": "Y"
+        }
+        
         try:
             res = requests.get(url, headers=headers, params=params)
             res_data = res.json()
             if res_data['rt_cd'] == '0' and 'output2' in res_data:
                 min_data = res_data['output2'][::-1] 
-                df_min = pd.DataFrame({"Open": [float(m['stck_oprc']) for m in min_data], "High": [float(m['stck_hgpr']) for m in min_data], "Low": [float(m['stck_lwpr']) for m in min_data], "Close": [float(m['stck_prpr']) for m in min_data], "Volume": [float(m['cntg_vol']) for m in min_data]}, index=pd.to_datetime([f"{m['stck_bsop_date']} {m['stck_cntg_hour']}" for m in min_data], format="%Y%m%d %H%M%S"))
+                df_min = pd.DataFrame({
+                    "Open": [float(m['stck_oprc']) for m in min_data], 
+                    "High": [float(m['stck_hgpr']) for m in min_data], 
+                    "Low": [float(m['stck_lwpr']) for m in min_data], 
+                    "Close": [float(m['stck_prpr']) for m in min_data], 
+                    "Volume": [float(m['cntg_vol']) for m in min_data]
+                }, index=pd.to_datetime([f"{m['stck_bsop_date']} {m['stck_cntg_hour']}" for m in min_data], format="%Y%m%d %H%M%S"))
+                
                 df_min = df_min[df_min['Close'] > 0]
                 
                 if not df_min.empty:
-                    df_min['MA5'], df_min['MA20'], df_min['Vol_MA5'] = df_min['Close'].rolling(5).mean(), df_min['Close'].rolling(20).mean(), df_min['Volume'].rolling(5).mean()
+                    df_min['MA5'] = df_min['Close'].rolling(5).mean()
+                    df_min['MA20'] = df_min['Close'].rolling(20).mean()
+                    df_min['Vol_MA5'] = df_min['Volume'].rolling(5).mean()
+                    
                     df_min['Breakout'] = (df_min['Close'] > df_min['High'].shift(1).rolling(20).max()) & (df_min['Volume'] > df_min['Vol_MA5'] * 1.5)
                     df_min['Pullback'] = (df_min['MA20'] > df_min['MA20'].shift(3)) & (df_min['Low'] <= df_min['MA20'] * 1.005) & (df_min['Close'] >= df_min['MA20'] * 0.998) & (df_min['Volume'] < df_min['Vol_MA5'])
                     
-                    c_p, h_10m = df_min['Close'].iloc[-1], df_min['High'].iloc[-10:].max()
-                    if c_p < df_min['MA5'].iloc[-1] and c_p <= h_10m * 0.97: st.error(f"💣 **[🚨 보안관 비상경보]** **{target_name}** 종목은 5분선이 붕괴되어 급락 위험이 큽니다. 신규 진입 금지!")
-                    elif c_p >= h_10m * 0.98 and not (df_min['MA5'].iloc[-1] > df_min['MA20'].iloc[-1] and df_min['MA5'].iloc[-2] <= df_min['MA20'].iloc[-2]): st.warning(f"⚠️ **[추격매수 경고]** **{target_name}** 종목은 가짜 돌파에 걸릴 확률이 높으니 관망하십시오.")
-                    elif df_min['MA5'].iloc[-1] > df_min['MA20'].iloc[-1] and df_min['MA5'].iloc[-2] <= df_min['MA20'].iloc[-2] and df_min['Volume'].iloc[-1] > df_min['Vol_MA5'].iloc[-1] * 1.5 and c_p < h_10m * 0.96: st.success(f"🚀 **[정석 무릎자리]** **{target_name}** 정배열 초입 돌파가 확인된 타점입니다.")
-                    else: st.info(f"⚪ **[안전 지대]** **{target_name}** 기준선 리스크를 준수 중입니다.")
+                    c_p = df_min['Close'].iloc[-1]
+                    h_10m = df_min['High'].iloc[-10:].max()
+                    
+                    if c_p < df_min['MA5'].iloc[-1] and c_p <= h_10m * 0.97: 
+                        st.error(f"💣 **[🚨 보안관 비상경보]** **{target_name}** 종목은 5분선이 붕괴되어 급락 위험이 큽니다. 신규 진입 금지!")
+                    elif c_p >= h_10m * 0.98 and not (df_min['MA5'].iloc[-1] > df_min['MA20'].iloc[-1] and df_min['MA5'].iloc[-2] <= df_min['MA20'].iloc[-2]): 
+                        st.warning(f"⚠️ **[추격매수 경고]** **{target_name}** 종목은 가짜 돌파에 걸릴 확률이 높으니 관망하십시오.")
+                    elif df_min['MA5'].iloc[-1] > df_min['MA20'].iloc[-1] and df_min['MA5'].iloc[-2] <= df_min['MA20'].iloc[-2] and df_min['Volume'].iloc[-1] > df_min['Vol_MA5'].iloc[-1] * 1.5 and c_p < h_10m * 0.96: 
+                        st.success(f"🚀 **[정석 무릎자리]** **{target_name}** 정배열 초입 돌파가 확인된 타점입니다.")
+                    else: 
+                        st.info(f"⚪ **[안전 지대]** **{target_name}** 기준선 리스크를 준수 중입니다.")
                     
                     df_min['Diff'] = df_min['Close'].diff().fillna(0)
                     min_price, max_price = df_min['Low'].min(), df_min['High'].max()
@@ -432,11 +503,23 @@ if not output_df.empty and selected_idx < len(output_df):
                     fig_stock.add_trace(go.Scatter(x=df_min.index, y=df_min['MA20'], mode='lines', line=dict(color='#cc00ff', width=1.5), name="20분선", hoverinfo='skip'))
                     
                     bo_d = df_min[df_min['Breakout']]
-                    if not bo_d.empty: fig_stock.add_trace(go.Scatter(x=bo_d.index, y=bo_d['High'] + price_margin*0.2, mode='markers+text', marker=dict(symbol='triangle-down', size=10, color='red'), text="🔥돌파", textposition="top center", textfont=dict(color='red', size=11, weight='bold'), name="돌파"))
+                    if not bo_d.empty: 
+                        fig_stock.add_trace(go.Scatter(x=bo_d.index, y=bo_d['High'] + price_margin*0.2, mode='markers+text', marker=dict(symbol='triangle-down', size=10, color='red'), text="🔥돌파", textposition="top center", textfont=dict(color='red', size=11, weight='bold'), name="돌파"))
+                        
                     pb_d = df_min[df_min['Pullback']]
-                    if not pb_d.empty: fig_stock.add_trace(go.Scatter(x=pb_d.index, y=pb_d['Low'] - price_margin*0.2, mode='markers+text', marker=dict(symbol='triangle-up', size=10, color='blue'), text="💧눌림", textposition="bottom center", textfont=dict(color='blue', size=11, weight='bold'), name="눌림"))
+                    if not pb_d.empty: 
+                        fig_stock.add_trace(go.Scatter(x=pb_d.index, y=pb_d['Low'] - price_margin*0.2, mode='markers+text', marker=dict(symbol='triangle-up', size=10, color='blue'), text="💧눌림", textposition="bottom center", textfont=dict(color='blue', size=11, weight='bold'), name="눌림"))
                     
                     fig_stock.add_trace(go.Bar(x=df_min.index, y=df_min['Volume'], name="거래량", marker_color=['#ff4b4b' if d >= 0 else '#4c6198' for d in df_min['Diff']], opacity=0.7, yaxis='y2'))
-                    fig_stock.update_layout(template="plotly_white", height=650, margin=dict(l=10, r=60, t=30, b=20), xaxis=dict(showgrid=True, gridcolor='#f0f0f0', type='date', tickformat='%H:%M', rangeslider=dict(visible=False)), yaxis=dict(side='right', showgrid=True, gridcolor='#f0f0f0', tickformat=',', range=[min_price - price_margin, max_price + price_margin], domain=[0.3, 1]), yaxis2=dict(side='right', showgrid=False, tickformat=',', domain=[0, 0.2]), hovermode='x unified', showlegend=True, legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
+                    
+                    fig_stock.update_layout(
+                        template="plotly_white", height=650, margin=dict(l=10, r=60, t=30, b=20), 
+                        xaxis=dict(showgrid=True, gridcolor='#f0f0f0', type='date', tickformat='%H:%M', rangeslider=dict(visible=False)), 
+                        yaxis=dict(side='right', showgrid=True, gridcolor='#f0f0f0', tickformat=',', range=[min_price - price_margin, max_price + price_margin], domain=[0.3, 1]), 
+                        yaxis2=dict(side='right', showgrid=False, tickformat=',', domain=[0, 0.2]), 
+                        hovermode='x unified', showlegend=True, 
+                        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+                    )
                     st.plotly_chart(fig_stock, use_container_width=True)
-        except: pass
+        except: 
+            pass
