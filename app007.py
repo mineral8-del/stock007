@@ -177,62 +177,67 @@ def get_realtime_market_summary():
     return (ks_price, ks_ratio), (kq_price, kq_ratio), (usd_price, usd_change)
 
 # -----------------------------------------------------------------------------
-# 📊 메인 화면 렌더링 (그래프 삭제 후 깔끔한 텍스트 위젯으로 대체)
+# 🌐 메인 화면 렌더링: 실시간 종합 상황판 (5열 배치로 한눈에 보기)
 # -----------------------------------------------------------------------------
-st.subheader("🌐 글로벌 시장 및 주요 지수 실시간 모니터링")
+st.subheader("🌐 실시간 시장 종합 상황판")
+
+# 1. 데이터 불러오기
 (ks_price, ks_ratio), (kq_price, kq_ratio), (usd_price, usd_change) = get_realtime_market_summary()
-
-m_col1, m_col2, m_col3 = st.columns(3)
-
-with m_col1:
-    ks_delta = f"{ks_ratio:+.2f}%" if ks_price != "-" else "데이터 없음"
-    st.metric(label="📊 KOSPI", value=ks_price, delta=ks_delta)
-
-with m_col2:
-    kq_delta = f"{kq_ratio:+.2f}%" if kq_price != "-" else "데이터 없음"
-    st.metric(label="📈 KOSDAQ", value=kq_price, delta=kq_delta)
-
-with m_col3:
-    usd_delta = f"{usd_change} 원" if usd_price != "-" else "데이터 없음"
-    # 환율 상승은 주식 시장에 악재이므로 delta_color="inverse"를 적용해 색상을 반전시켰습니다.
-    st.metric(label="💵 USD/KRW (원달러 환율)", value=f"{usd_price} 원", delta=usd_delta, delta_color="inverse")
-
-st.markdown("---")
-st.subheader("💼 외국인 선물 수급 및 시장 주도 상태")
 
 if 'foreign_futures_net' not in st.session_state: 
     st.session_state.foreign_futures_net = get_foreign_investor_trend()
 foreign_futures_net = st.session_state.foreign_futures_net
 
+# 2. 수급 및 점수 계산 로직
 if foreign_futures_net > 0:
     value_str = f"+{foreign_futures_net:,} 억 원"
     program_intensity = min(100, int(50 + (foreign_futures_net / 10)))
-    trade_signal = "🚀 외국인 선물 대량 매수 중!"
+    trade_signal = "🚀 강력 매수"
     delta_msg = "매수 우위"
     score_color = "normal"
 elif foreign_futures_net < 0:
     value_str = f"{foreign_futures_net:,} 억 원"
     program_intensity = max(0, int(50 - (abs(foreign_futures_net) / 10)))
-    trade_signal = "⚠️ 외국인 선물 강한 매도세!"
+    trade_signal = "⚠️ 강한 매도"
     delta_msg = "매도 우위"
     score_color = "inverse"
 else:
     value_str = "0.0 억 원"
     program_intensity = 50
-    trade_signal = "⏸️ 수급 데이터 대기 중"
+    trade_signal = "⏸️ 대기 중"
     delta_msg = "데이터 없음"
     score_color = "off"
 
-col_m1, col_m2 = st.columns(2)
-col_m1.metric(label="외국인 주식선물 순매수 금액", value=value_str, delta=delta_msg, delta_color=score_color)
-col_m2.metric(label="시장 전체 우량주 매력도 환경 (100점 만점)", value=f"{program_intensity} 점", delta=trade_signal, delta_color=score_color)
+# 3. 5열 가로 배치 (한눈에 보기)
+col1, col2, col3, col4, col5 = st.columns(5)
 
-if st.button("🔄 실시간 데이터 업데이트 (수동)"):
-    get_foreign_investor_trend.clear() 
-    st.session_state.foreign_futures_net = get_foreign_investor_trend()
-    get_kis_top_trading_value_stocks.clear()
-    get_market_indices_v2.clear()
-    st.rerun()
+with col1:
+    ks_delta = f"{ks_ratio:+.2f}%" if ks_price != "-" else "데이터 없음"
+    st.metric(label="📊 KOSPI", value=ks_price, delta=ks_delta)
+
+with col2:
+    kq_delta = f"{kq_ratio:+.2f}%" if kq_price != "-" else "데이터 없음"
+    st.metric(label="📈 KOSDAQ", value=kq_price, delta=kq_delta)
+
+with col3:
+    usd_delta = f"{usd_change} 원" if usd_price != "-" else "데이터 없음"
+    st.metric(label="💵 환율(USD/KRW)", value=f"{usd_price} 원", delta=usd_delta, delta_color="inverse")
+
+with col4:
+    st.metric(label="🏢 외국인 선물", value=value_str, delta=delta_msg, delta_color=score_color)
+
+with col5:
+    st.metric(label="🎯 우량주 매력도", value=f"{program_intensity} 점", delta=trade_signal, delta_color=score_color)
+
+# 수동 업데이트 버튼 (우측 정렬 느낌으로 작게 배치)
+col_empty, col_btn = st.columns([8, 2])
+with col_btn:
+    if st.button("🔄 실시간 동기화", use_container_width=True):
+        get_foreign_investor_trend.clear() 
+        st.session_state.foreign_futures_net = get_foreign_investor_trend()
+        get_realtime_market_summary.clear()
+        get_kis_top_trading_value_stocks.clear()
+        st.rerun()
 
 st.markdown("---")
 
