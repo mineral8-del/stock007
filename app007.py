@@ -138,27 +138,58 @@ def get_foreign_investor_trend():
         
     return 0.0
 
-@st.cache_data(ttl=60)
-def get_market_indices_v2():
-    end_date = datetime.now(KST).strftime('%Y-%m-%d')
-    start_date = (datetime.now(KST) - timedelta(days=20)).strftime('%Y-%m-%d')
-    try: 
-        ks, kq = fdr.DataReader('KS11', start_date, end_date), fdr.DataReader('KQ11', start_date, end_date) 
-    except: 
-        ks, kq = pd.DataFrame(), pd.DataFrame()
+# -----------------------------------------------------------------------------
+# 🌐 [수정됨] 실시간 지수 스크래핑 함수 (네이버 모바일 API 100% 실시간 동기화)
+# -----------------------------------------------------------------------------
+@st.cache_data(ttl=30)
+def get_realtime_market_summary():
+    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
+    
+    # 코스피/코스닥 실시간 호출
+    def fetch_index(code):
+        url = f"https://m.stock.naver.com/api/index/{code}/price?pageSize=20&page=1"
+        res = requests.get(url, headers=headers, timeout=5)
+        data = res.json()
+        df = pd.DataFrame(data)
+        df['Close'] = df['closePrice'].str.replace(',', '').astype(float)
+        df['Date'] = pd.to_datetime(df['localTradedAt'])
+        df = df.sort_values('Date').set_index('Date')
         
-    try: 
-        usd = fdr.DataReader('USD/KRW', start_date, end_date)
-    except: 
-        usd = pd.DataFrame()
-        
-    return ks, kq, usd
+        # 최신(현재) 실시간 가격 및 등락률 
+        now_price = float(data[0]['closePrice'].replace(',', ''))
+        change_ratio = float(data[0]['fluctuationsRatio'])
+        return df, now_price, change_ratio
 
-def create_pro_chart(df, title, color_hex):
+    # 원달러 환율 실시간 호출
+    def fetch_exchange():
+        url = "https://m.stock.naver.com/front-api/v1/marketIndex/prices?category=exchange&reutersCode=FX_USDKRW&page=1"
+        res = requests.get(url, headers=headers, timeout=5)
+        data = res.json().get('result', [])
+        df = pd.DataFrame(data)
+        df['Close'] = df['closePrice'].str.replace(',', '').astype(float)
+        df['Date'] = pd.to_datetime(df['localTradedAt'])
+        df = df.sort_values('Date').set_index('Date')
+        
+        now_price = float(data[0]['closePrice'].replace(',', ''))
+        change_ratio = float(data[0]['fluctuationsRatio'])
+        return df, now_price, change_ratio
+
+    try: ks_data = fetch_index("KOSPI")
+    except: ks_data = (pd.DataFrame(), 0.0, 0.0)
+        
+    try: kq_data = fetch_index("KOSDAQ")
+    except: kq_data = (pd.DataFrame(), 0.0, 0.0)
+        
+    try: usd_data = fetch_exchange()
+    except: usd_data = (pd.DataFrame(), 0.0, 0.0)
+
+    return ks_data, kq_data, usd_data
+
+# -----------------------------------------------------------------------------
+# 🎨 [수정됨] 차트 그리기 함수 (지연 데이터로 계산하지 않고 실시간 값을 직접 텍스트로 박음)
+# -----------------------------------------------------------------------------
+def create_pro_chart(df, title, color_hex, now_price, change_ratio):
     if df.empty: return go.Figure().update_layout(title="데이터 로드 실패")
-    current_val = df['Close'].iloc[-1]
-    prev_val = df['Close'].iloc[-2] if len(df) > 1 else df['Close'].iloc[-1]
-    delta = current_val - prev_val
     
     fig = go.Figure()
     fig.add_trace(go.Scatter(
@@ -168,8 +199,14 @@ def create_pro_chart(df, title, color_hex):
         name=title
     ))
     
+    sign = "+" if change_ratio > 0 else ""
+    color_text = '#ff4b4b' if change_ratio > 0 else ('#0068c9' if change_ratio < 0 else '#ffffff')
+    
     fig.update_layout(
-        title=dict(text=f"<b>{title}</b> <span style='font-size:14px; color:{'#ff4b4b' if delta >=0 else '#0068c9'}'>{current_val:,.2f} ({(delta / prev_val) * 100:+.2f}%)</span>", x=0.05, y=0.85), 
+        title=dict(
+            text=f"<b>{title}</b> <span style='font-size:14px; color:{color_text}'>{now_price:,.2f} ({sign}{change_ratio:.2f}%)</span>", 
+            x=0.05, y=0.85
+        ), 
         height=280, margin=dict(l=10, r=10, t=50, b=10), template="plotly_dark", 
         paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", 
         xaxis=dict(showgrid=False), yaxis=dict(showgrid=True, gridcolor='rgba(255,255,255,0.05)', side='right'), 
@@ -177,93 +214,16 @@ def create_pro_chart(df, title, color_hex):
     )
     return fig
 
-@st.cache_data(ttl=60, show_spinner=False)
-def fetch_after_market_data(top30_df):
-    if top30_df.empty: return pd.DataFrame(columns=['종목코드', '시간외 현재가', '시간외 등락률', '시간외 거래량', '_sort_ratio_num'])
-    url = f"{URL_BASE}/uapi/domestic-stock/v1/quotations/inquire-price"
-    headers = get_common_headers("FHKST01010100") 
-    after_market_results = []
-    my_bar = st.progress(0, text="🌙 애프터 마켓(시간외 단일가) 데이터를 불러오는 중입니다...")
-    
-    for i, (idx, row) in enumerate(top30_df.iterrows()):
-        code = row['종목코드']
-        params = {"FID_COND_MRKT_DIV_CODE": "J", "FID_INPUT_ISCD": code}
-        try:
-            res = requests.get(url, headers=headers, params=params)
-            data = res.json()
-            if data.get('rt_cd') == '0' and 'output' in data:
-                after_price = float(data['output'].get('ovtm_untp_prpr', 0))
-                after_ratio = float(data['output'].get('ovtm_untp_prdy_ctrt', 0))
-                after_vol = float(data['output'].get('ovtm_untp_vol', 0))
-                after_market_results.append({
-                    '종목코드': code, 
-                    '시간외 현재가': f"{int(after_price):,} 원" if after_price > 0 else "-",
-                    '시간외 등락률': f"{after_ratio:+.2f} %" if after_price > 0 else "-",
-                    '시간외 거래량': f"{int(after_vol):,}" if after_price > 0 else "-", 
-                    '_sort_ratio_num': after_ratio
-                })
-            time.sleep(0.1) 
-        except: 
-            after_market_results.append({'종목코드': code, '시간외 현재가': "-", '시간외 등락률': "-", '시간외 거래량': "-", '_sort_ratio_num': 0.0})
-        my_bar.progress((i + 1) / len(top30_df))
-        
-    my_bar.empty()
-    df = pd.DataFrame(after_market_results)
-    if df.empty: df = pd.DataFrame(columns=['종목코드', '시간외 현재가', '시간외 등락률', '시간외 거래량', '_sort_ratio_num'])
-    return df
-
-@st.cache_data(ttl=60, show_spinner=False)
-def fetch_pre_market_data(top30_df):
-    if top30_df.empty: return pd.DataFrame(columns=['종목코드', '☀️ 예상 체결가', '☀️ 예상 갭상승률', '☀️ 예상 거래량', '_sort_ratio_num'])
-    url = f"{URL_BASE}/uapi/domestic-stock/v1/quotations/inquire-price"
-    headers = get_common_headers("FHKST01010100") 
-    pre_market_results = []
-    my_bar = st.progress(0, text="☀️ 프리마켓(장전 동시호가) 예상 가격을 불러오는 중입니다...")
-    
-    for i, (idx, row) in enumerate(top30_df.iterrows()):
-        code = row['종목코드']
-        params = {"FID_COND_MRKT_DIV_CODE": "J", "FID_INPUT_ISCD": code}
-        try:
-            res = requests.get(url, headers=headers, params=params)
-            data = res.json()
-            if data.get('rt_cd') == '0' and 'output' in data:
-                out = data['output']
-                def safe_float(val):
-                    if val in [None, "", " "]: return 0.0
-                    try: return float(val)
-                    except: return 0.0
-                    
-                pre_price = safe_float(out.get('antc_cnpr', 0))
-                pre_ratio = safe_float(out.get('antc_cntg_prdy_ctrt', 0))
-                pre_vol = safe_float(out.get('antc_cntg_vol', 0))
-                
-                pre_market_results.append({
-                    '종목코드': code, 
-                    '☀️ 예상 체결가': f"{int(pre_price):,} 원" if pre_price > 0 else "데이터 없음",
-                    '☀️ 예상 갭상승률': f"{pre_ratio:+.2f} %" if pre_price > 0 else "0.00 %",
-                    '☀️ 예상 거래량': f"{int(pre_vol):,}" if pre_price > 0 else "0", 
-                    '_sort_ratio_num': pre_ratio
-                })
-            time.sleep(0.1) 
-        except: 
-            pre_market_results.append({'종목코드': code, '☀️ 예상 체결가': "에러", '☀️ 예상 갭상승률': "에러", '☀️ 예상 거래량': "에러", '_sort_ratio_num': 0.0})
-        my_bar.progress((i + 1) / len(top30_df))
-        
-    my_bar.empty()
-    df = pd.DataFrame(pre_market_results)
-    if df.empty: df = pd.DataFrame(columns=['종목코드', '☀️ 예상 체결가', '☀️ 예상 갭상승률', '☀️ 예상 거래량', '_sort_ratio_num'])
-    return df
-
 # -----------------------------------------------------------------------------
-# 메인 화면 렌더링
+# 메인 화면 렌더링 부분 (여기도 교체해주세요)
 # -----------------------------------------------------------------------------
 st.subheader("🌐 글로벌 시장 및 주요 지수 실시간 모니터링")
-ks_df, kq_df, usd_df = get_market_indices_v2()
+ks_data, kq_data, usd_data = get_realtime_market_summary()
 
 m_col1, m_col2, m_col3 = st.columns(3)
-with m_col1: st.plotly_chart(create_pro_chart(ks_df, "KOSPI", "#FF4B4B"), use_container_width=True)
-with m_col2: st.plotly_chart(create_pro_chart(kq_df, "KOSDAQ", "#00CC96"), use_container_width=True)
-with m_col3: st.plotly_chart(create_pro_chart(usd_df, "USD/KRW", "#636EFA"), use_container_width=True)
+with m_col1: st.plotly_chart(create_pro_chart(ks_data[0], "KOSPI", "#FF4B4B", ks_data[1], ks_data[2]), use_container_width=True)
+with m_col2: st.plotly_chart(create_pro_chart(kq_data[0], "KOSDAQ", "#00CC96", kq_data[1], kq_data[2]), use_container_width=True)
+with m_col3: st.plotly_chart(create_pro_chart(usd_data[0], "USD/KRW", "#636EFA", usd_data[1], usd_data[2]), use_container_width=True)
 
 st.markdown("---")
 st.subheader("💼 외국인 선물 수급 및 시장 주도 상태")
