@@ -201,7 +201,7 @@ if is_shorts_mode:
         .block-container { padding: 0 !important; max-width: 100% !important; }
         ::-webkit-scrollbar { display: none !important; }
         
-        .shorts-container { padding: 12px; padding-bottom: 90px; font-family: 'Pretendard', 'Malgun Gothic', sans-serif; }
+        .shorts-container { padding: 12px; padding-bottom: 120px; font-family: 'Pretendard', 'Malgun Gothic', sans-serif; }
         .s-header { text-align: center; padding: 15px 0 5px 0; }
         .s-title { color: #facc15; font-size: 1.8rem; font-weight: 900; margin-bottom: 6px; letter-spacing: -0.5px; }
         
