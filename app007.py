@@ -160,11 +160,14 @@ def get_realtime_market_summary():
         change_ratio = float(data[0]['fluctuationsRatio'])
         return df, now_price, change_ratio
 
-    # 원달러 환율 실시간 호출
+# 원달러 환율 실시간 호출 (버그 수정 완료)
     def fetch_exchange():
         url = "https://m.stock.naver.com/front-api/v1/marketIndex/prices?category=exchange&reutersCode=FX_USDKRW&page=1"
         res = requests.get(url, headers=headers, timeout=5)
-        data = res.json().get('result', [])
+        
+        # 🛠️ 수정된 부분: res.json() 자체가 리스트(List) 구조를 반환하므로 바로 변수에 담습니다.
+        data = res.json() 
+        
         df = pd.DataFrame(data)
         df['Close'] = df['closePrice'].str.replace(',', '').astype(float)
         df['Date'] = pd.to_datetime(df['localTradedAt'])
