@@ -42,7 +42,7 @@ def get_theme_icon(stock_name):
             return theme
     return "▪️ 개별주"
 
-# 🎯 공통 매매 타이밍 시그널 함수 (상단 배치)
+# 🎯 공통 매매 타이밍 시그널 함수
 def detect_signal(row):
     if row['등락률'] >= 7.0 and row['거래대금'] > 50000: 
         return "🔥 돌파매매"
@@ -165,12 +165,12 @@ with st.sidebar:
 
 
 # =============================================================================
-# 🎬 분기점 1: 쇼츠 송출용 세로 화면 (10개 종목 + 30초 새로고침 + 타점 정렬 규칙)
+# 🎬 분기점 1: 쇼츠 송출용 세로 화면 
 # =============================================================================
 if is_shorts_mode:
     try:
         from streamlit_autorefresh import st_autorefresh
-        # ⏱️ 요구사항 반영: 30초(30000ms)마다 데이터 강제 리셋 및 새로고침
+        # ⏱️ 30초(30000ms)마다 데이터 강제 리셋 및 새로고침
         st_autorefresh(interval=30000, limit=20000, key="shorts_refresh")
     except: pass
 
@@ -180,7 +180,9 @@ if is_shorts_mode:
         header[data-testid="stHeader"], footer, .stToolbar { display: none !important; }
         .block-container { padding: 0 !important; max-width: 100% !important; }
         ::-webkit-scrollbar { display: none !important; }
-        .shorts-container { padding: 12px; font-family: 'Pretendard', 'Malgun Gothic', sans-serif; }
+        
+        /* 하단 자막을 위해 padding-bottom 50px 추가 */
+        .shorts-container { padding: 12px; padding-bottom: 50px; font-family: 'Pretendard', 'Malgun Gothic', sans-serif; }
         .s-header { text-align: center; padding: 15px 0 5px 0; }
         .s-title { color: #facc15; font-size: 1.8rem; font-weight: 900; margin-bottom: 6px; letter-spacing: -0.5px; }
         .s-time-box { display: inline-block; background-color: #1e293b; color: #cbd5e1; padding: 4px 14px; border-radius: 20px; font-size: 0.85rem; font-weight: bold; border: 1px solid #334155; }
@@ -191,9 +193,9 @@ if is_shorts_mode:
         .s-name-group { display: flex; flex-direction: column; justify-content: center; }
         .s-name { font-size: 1.25rem; font-weight: 900; color: white; margin-bottom: 2px; letter-spacing: -0.5px; }
         .s-badge { font-size: 0.75rem; font-weight: bold; display: flex; align-items: center; gap: 4px; }
-        .badge-orange { color: #fb923c; } /* 돌파매매 */
-        .badge-pink { color: #f472b6; }   /* 눌림목 */
-        .badge-gray { color: #94a3b8; }   /* 관망 */
+        .badge-orange { color: #fb923c; } 
+        .badge-pink { color: #f472b6; }   
+        .badge-gray { color: #94a3b8; }   
         .s-right { display: flex; gap: 10px; align-items: center; }
         .s-price-group { text-align: right; }
         .s-price { font-size: 1.15rem; font-weight: 900; color: white; margin-bottom: 1px; }
@@ -203,6 +205,14 @@ if is_shorts_mode:
         .s-score-box { background-color: #0f172a; padding: 4px 8px; border-radius: 8px; border: 1px solid #334155; text-align: center; min-width: 60px; display: flex; flex-direction: column; justify-content: center; }
         .s-score-label { font-size: 0.6rem; color: #94a3b8; font-weight: bold; margin-bottom: 1px; }
         .s-score { font-size: 1.1rem; font-weight: 900; color: #22c55e; } 
+        
+        /* 🚨 하단 스크롤 자막(Ticker) CSS */
+        .ticker-wrap { position: fixed; bottom: 0; left: 0; width: 100%; overflow: hidden; background-color: #7f1d1d; height: 38px; display: flex; align-items: center; z-index: 9999; }
+        .ticker-text { white-space: nowrap; color: white; font-size: 1.05rem; font-weight: 800; animation: ticker 15s linear infinite; }
+        @keyframes ticker {
+            0% { transform: translateX(100vw); }
+            100% { transform: translateX(-100%); }
+        }
     </style>
     """, unsafe_allow_html=True)
 
@@ -218,10 +228,8 @@ if is_shorts_mode:
     
     df_shorts = get_kis_top_trading_value_stocks()
     if not df_shorts.empty:
-        # 정렬 풀(Pool)을 확보하기 위해 상위 30개 후보군을 추출
         filtered_df = df_shorts.head(30).copy()
         
-        # 1. 딥러닝 AI 스코어 실시간 매핑
         ai_scores = []
         for i, (idx, row) in enumerate(filtered_df.iterrows()):
             if lstm_model is not None and lstm_scaler is not None:
@@ -237,28 +245,22 @@ if is_shorts_mode:
                 except: ai_scores.append(0.0)
             else:
                 ai_scores.append(((row['등락률'] * 0.5) + np.log1p(row['거래대금'])).round(2))
-            time.sleep(0.02) # 초고속 새로고침을 위한 딜레이 단축
+            time.sleep(0.02) 
 
         filtered_df['10분_상승예측(%)'] = ai_scores
-        
-        # 2. 타점 상태 계산
         filtered_df['매매상태'] = filtered_df.apply(detect_signal, axis=1)
         
-        # 🔄 요구사항 반영: [돌파매매] -> [눌림목] -> [관망] 순서대로 정렬 기준 강제 정의
         signal_order = ["🔥 돌파매매", "💧 눌림목", "▪️ 관망"]
         filtered_df['정렬순서'] = pd.Categorical(filtered_df['매매상태'], categories=signal_order, ordered=True)
         
-        # 정렬 조건 실행 (1순위: 타점 상태 그룹핑, 2순위: 그 안에서 AI 점수가 높은 순)
-        # 📱 요구사항 반영: 최종 10개 종목만 표출 (.head(10))
+        # 쇼츠는 10개만 추출
         top_10 = filtered_df.sort_values(by=['정렬순서', '10분_상승예측(%)'], ascending=[True, False]).head(10)
         
-        # UI 매칭 뱃지 색상 및 텍스트 맵핑 함수
         def assign_badge_style(status):
             if status == "🔥 돌파매매": return "🔥 급등 돌파", "badge-orange"
             elif status == "💧 눌림목": return "💕 S급 눌림", "badge-pink"
             return "▪️ 관망 상태", "badge-gray"
 
-        # 리스트 화면 그리기
         for i, row in top_10.reset_index(drop=True).iterrows():
             rank = i + 1
             ratio_class = "up" if row['등락률'] > 0 else "down"
@@ -288,7 +290,16 @@ if is_shorts_mode:
             </div>
             """, unsafe_allow_html=True)
             
-        st.markdown("</div>", unsafe_allow_html=True) 
+        # 🚨 하단 스크롤 자막 추가 (컨테이너 닫고 외부 고정 배치)
+        st.markdown("""
+        </div>
+        <div class="ticker-wrap">
+            <div class="ticker-text">
+                [투자 유의사항] 본 방송은 딥러닝 AI 모델(LSTM)에 의한 단순 데이터 제공용이며 투자를 권유하지 않습니다. 모든 투자의 책임은 투자자 본인에게 있습니다.
+            </div>
+        </div>
+        """, unsafe_allow_html=True) 
+
     else:
         st.warning("데이터 수집 중입니다.")
 
@@ -356,7 +367,9 @@ else:
 
     if not df_universe.empty:
         filtered_df = df_universe[df_universe['등락률'] >= 1.0].copy()
-        filtered_df = filtered_df.sort_values(by='거래대금', ascending=False).head(15)
+        
+        # 💻 대시보드는 30개로 확장 추출 (.head(30))
+        filtered_df = filtered_df.sort_values(by='거래대금', ascending=False).head(30)
 
         if lstm_model is not None and lstm_scaler is not None:
             my_bar = st.progress(0, text="🧠 딥러닝 모델 분석 중...")
@@ -385,13 +398,13 @@ else:
         filtered_df['손절가'] = (filtered_df['현재가'] * 0.98).astype(int)
 
         filtered_df['매매상태'] = filtered_df.apply(detect_signal, axis=1)
-        top_30 = filtered_df.sort_values(by='10분_상승예측(%)', ascending=False)
+        top_list = filtered_df.sort_values(by='10분_상승예측(%)', ascending=False)
         
         output_dict = {
-            '테마': top_30['테마'], '실시간 상태': top_30['매매상태'], 'AI 예측스코어': top_30['10분_상승예측(%)'].apply(lambda x: f"🚀 {float(x):.2f}점"), 
-            '종목명': top_30['종목명'], '전일 종가(현재가)': top_30['현재가'].apply(lambda x: f"{int(x):,} 원"), '전일 상승률': top_30['등락률'].apply(lambda x: f"+{x:.2f} %"),
-            '단기 목표가(+3%)': top_30['단기_목표가'].apply(lambda x: f"{x:,} 원"), '손절가(-2%)': top_30['손절가'].apply(lambda x: f"{x:,} 원"),
-            '거래대금(백만)': top_30['거래대금'].apply(lambda x: f"{int(x):,}"), '종목코드': top_30['종목코드']
+            '테마': top_list['테마'], '실시간 상태': top_list['매매상태'], 'AI 예측스코어': top_list['10분_상승예측(%)'].apply(lambda x: f"🚀 {float(x):.2f}점"), 
+            '종목명': top_list['종목명'], '전일 종가(현재가)': top_list['현재가'].apply(lambda x: f"{int(x):,} 원"), '전일 상승률': top_list['등락률'].apply(lambda x: f"+{x:.2f} %"),
+            '단기 목표가(+3%)': top_list['단기_목표가'].apply(lambda x: f"{x:,} 원"), '손절가(-2%)': top_list['손절가'].apply(lambda x: f"{x:,} 원"),
+            '거래대금(백만)': top_list['거래대금'].apply(lambda x: f"{int(x):,}"), '종목코드': top_list['종목코드']
         }
         
         output_df = pd.DataFrame(output_dict).reset_index(drop=True)
