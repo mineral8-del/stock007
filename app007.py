@@ -14,23 +14,15 @@ import tensorflow as tf
 # 📱 1. 페이지 기본 설정 (무조건 최상단)
 st.set_page_config(layout="wide", page_title="국내주식 실시간 딥러닝 스캐너", initial_sidebar_state="collapsed")
 
-# =============================================================================
-# 🔄 뷰(View) 라우터: 확실한 사이드바 스위치 방식으로 변경
-# =============================================================================
-with st.sidebar:
-    st.markdown("### ⚙️ 화면 모드 설정")
-    # 스위치를 켜면 True, 끄면 False가 됩니다.
-    is_shorts_mode = st.toggle("📱 쇼츠(세로) 방송 모드 켜기", value=False)
-    st.info("스위치를 켜면 상단 메뉴가 사라지고 쇼츠용 세로 화면으로 바뀝니다.")
 # -----------------------------------------------------------------------------
-# [설정] 한국투자증권 API KEY (기존 방식 원상 복구)
+# [설정] 한국투자증권 API KEY (Streamlit Secrets 사용)
 # -----------------------------------------------------------------------------
 try:
     APP_KEY = st.secrets["KIS_APP_KEY"]
     APP_SECRET = st.secrets["KIS_APP_SECRET"]
 except KeyError:
     st.error("⚠️ Streamlit secrets에 'KIS_APP_KEY' 또는 'KIS_APP_SECRET'이 설정되지 않았습니다.")
-    st.stop() # 여기서 멈추더라도 에러 메시지는 화면에 떠야 정상입니다.
+    st.stop()
 
 URL_BASE = "https://openapi.koreainvestment.com:9443" 
 KST = timezone(timedelta(hours=9))
@@ -143,7 +135,29 @@ def get_realtime_market_summary():
     return fetch_index("KOSPI"), fetch_index("KOSDAQ"), fetch_exchange()
 
 # =============================================================================
-# 🎬 분기점 1: 쇼츠 송출용 세로 화면 (이미지 디자인 완벽 적용)
+# 🧠 글로벌 딥러닝 모델 로드 (에러 해결: 맨 위로 끌어올림)
+# =============================================================================
+@st.cache_resource
+def load_lstm_assets():
+    try:
+        if "stock_lstm_model.h5" not in os.listdir() or "lstm_scaler.pkl" not in os.listdir(): 
+            return None, None
+        return tf.keras.models.load_model("stock_lstm_model.h5", compile=False), joblib.load("lstm_scaler.pkl")
+    except: return None, None
+
+lstm_model, lstm_scaler = load_lstm_assets()
+
+# =============================================================================
+# 🔄 뷰(View) 라우터: 사이드바 스위치
+# =============================================================================
+with st.sidebar:
+    st.markdown("### ⚙️ 화면 모드 설정")
+    is_shorts_mode = st.toggle("📱 쇼츠(세로) 방송 모드 켜기", value=False)
+    st.info("스위치를 켜면 상단 메뉴가 사라지고 쇼츠용 세로 화면으로 바뀝니다.")
+
+
+# =============================================================================
+# 🎬 분기점 1: 쇼츠 송출용 세로 화면 (9:16 비율 맞춤형)
 # =============================================================================
 if is_shorts_mode:
     try:
@@ -151,54 +165,37 @@ if is_shorts_mode:
         st_autorefresh(interval=60000, limit=10000, key="shorts_refresh")
     except: pass
 
-    # CSS 강제 적용: 이미지의 다크 테마와 디테일을 세로형으로 압축
     st.markdown("""
     <style>
-        /* 기본 배경 및 메뉴 숨김 */
         .stApp { background-color: #0b1120 !important; }
         header[data-testid="stHeader"], footer, .stToolbar { display: none !important; }
         .block-container { padding: 0 !important; max-width: 100% !important; }
         ::-webkit-scrollbar { display: none !important; }
-
-        /* 전체 컨테이너 및 폰트 */
         .shorts-container { padding: 15px; font-family: 'Pretendard', 'Malgun Gothic', sans-serif; }
-
-        /* 상단 헤더 영역 */
         .s-header { text-align: center; padding: 20px 0 10px 0; }
         .s-title { color: #facc15; font-size: 1.8rem; font-weight: 900; margin-bottom: 8px; letter-spacing: -0.5px; }
         .s-time-box { display: inline-block; background-color: #1e293b; color: #cbd5e1; padding: 4px 16px; border-radius: 20px; font-size: 0.9rem; font-weight: bold; border: 1px solid #334155; }
-        
-        /* 그라데이션 구분선 */
         .s-progress-line { height: 3px; background: linear-gradient(90deg, #3b82f6, #eab308, #ef4444); margin: 15px 0 20px 0; border-radius: 3px; }
-
-        /* 개별 종목 카드 */
         .s-card { background-color: #151e2e; border-radius: 12px; padding: 16px; margin-bottom: 12px; border: 1px solid #2a364a; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 4px 6px rgba(0,0,0,0.2); }
-
-        /* 카드 왼쪽: 랭킹, 이름, 뱃지 */
         .s-left { display: flex; align-items: center; gap: 12px; }
         .s-rank { background-color: #ef4444; color: white; width: 26px; height: 26px; border-radius: 50%; display: flex; justify-content: center; align-items: center; font-weight: 900; font-size: 1rem; flex-shrink: 0; box-shadow: 0 2px 4px rgba(239, 68, 68, 0.4); }
         .s-name-group { display: flex; flex-direction: column; justify-content: center; }
         .s-name { font-size: 1.4rem; font-weight: 900; color: white; margin-bottom: 3px; letter-spacing: -0.5px; }
         .s-badge { font-size: 0.75rem; font-weight: bold; display: flex; align-items: center; gap: 4px; }
-        .badge-pink { color: #f472b6; } /* S급 눌림 등 */
-        .badge-orange { color: #fb923c; } /* 급등 돌파 등 */
-
-        /* 카드 오른쪽: 가격, 등락률, AI 점수 */
+        .badge-pink { color: #f472b6; } 
+        .badge-orange { color: #fb923c; }
         .s-right { display: flex; gap: 12px; align-items: center; }
         .s-price-group { text-align: right; }
         .s-price { font-size: 1.2rem; font-weight: 900; color: white; margin-bottom: 2px; }
         .s-ratio { font-size: 1rem; font-weight: 900; }
         .s-ratio.up { color: #ef4444; }
         .s-ratio.down { color: #3b82f6; }
-
-        /* AI 점수 박스 */
         .s-score-box { background-color: #0f172a; padding: 6px 10px; border-radius: 8px; border: 1px solid #334155; text-align: center; min-width: 65px; display: flex; flex-direction: column; justify-content: center; }
         .s-score-label { font-size: 0.65rem; color: #94a3b8; font-weight: bold; margin-bottom: 2px; }
-        .s-score { font-size: 1.2rem; font-weight: 900; color: #22c55e; } /* 밝은 초록색 */
+        .s-score { font-size: 1.2rem; font-weight: 900; color: #22c55e; } 
     </style>
     """, unsafe_allow_html=True)
 
-    # 상단 타이틀 및 시간 렌더링
     current_time_str = datetime.now(KST).strftime("%H:%M:%S")
     st.markdown(f"""
     <div class="shorts-container">
@@ -209,22 +206,32 @@ if is_shorts_mode:
         <div class="s-progress-line"></div>
     """, unsafe_allow_html=True)
     
-    # 데이터 불러오기 및 타점 분석
     df_shorts = get_kis_top_trading_value_stocks()
     if not df_shorts.empty:
-        # 모델이 있으면 예측 수행, 없으면 기본 수식
-        lstm_model, lstm_scaler = load_lstm_assets()
-        
         filtered_df = df_shorts[df_shorts['등락률'] > 1.0].copy()
         filtered_df = filtered_df.sort_values(by='거래대금', ascending=False).head(15)
         
-        # 임시 점수/상태 할당 로직 (기존 함수 활용)
-        scores = []
-        for _, row in filtered_df.iterrows():
-             # 실전에서는 여기에 1분봉 API 로직이 들어갑니다. (생략 또는 기존 코드 유지)
-             score_val = ((row['등락률'] * 0.5) + np.log1p(row['거래대금'])).round(2)
-             scores.append(score_val)
-        filtered_df['10분_상승예측(%)'] = scores
+        # 쇼츠용 딥러닝 스코어 실시간 계산
+        ai_scores = []
+        for i, (idx, row) in enumerate(filtered_df.iterrows()):
+            if lstm_model is not None and lstm_scaler is not None:
+                try:
+                    res = requests.get(f"{URL_BASE}/uapi/domestic-stock/v1/quotations/inquire-time-itemchartprice", headers=get_common_headers("FHKST03010200"), params={"FID_ETC_CLS_CODE": "", "FID_COND_MRKT_DIV_CODE": "J", "FID_INPUT_ISCD": row['종목코드'], "FID_INPUT_HOUR_1": datetime.now(KST).strftime("%H%M%S"), "FID_PW_DATA_INCU_YN": "N"}).json()
+                    if res.get('rt_cd') == '0' and 'output2' in res:
+                        recent_10_mins = res['output2'][:10][::-1] 
+                        if len(recent_10_mins) == 10:
+                            scaled_min = lstm_scaler.transform(pd.DataFrame({"Open": [float(m['stck_oprc']) for m in recent_10_mins], "High": [float(m['stck_hgpr']) for m in recent_10_mins], "Low": [float(m['stck_lwpr']) for m in recent_10_mins], "Close": [float(m['stck_prpr']) for m in recent_10_mins], "Volume": [float(m['cntg_vol']) for m in recent_10_mins]}))
+                            ai_scores.append(np.round(lstm_model.predict(np.expand_dims(scaled_min, axis=0), verbose=0)[0][0], 2))
+                        else: ai_scores.append(0.0)
+                    else: ai_scores.append(0.0)
+                except: ai_scores.append(0.0)
+            else:
+                ai_scores.append(((row['등락률'] * 0.5) + np.log1p(row['거래대금'])).round(2))
+            
+            # API 제한 방지 딜레이
+            time.sleep(0.05)
+
+        filtered_df['10분_상승예측(%)'] = ai_scores
         
         def assign_badge(row):
             if row['등락률'] >= 7.0: return "🔥 급등 돌파", "badge-orange"
@@ -234,13 +241,10 @@ if is_shorts_mode:
         
         top_7 = filtered_df.sort_values(by='10분_상승예측(%)', ascending=False).head(7)
         
-        # 리스트 렌더링
         for i, row in top_7.reset_index(drop=True).iterrows():
             rank = i + 1
             ratio_class = "up" if row['등락률'] > 0 else "down"
             sign = "+" if row['등락률'] > 0 else ""
-            
-            # 여기서 AI 점수를 10점 만점 스케일 등 원하시는 형태로 가공 (예시로 그대로 출력)
             ai_score_display = f"{float(row['10분_상승예측(%)']):.1f}"
             
             st.markdown(f"""
@@ -265,9 +269,10 @@ if is_shorts_mode:
             </div>
             """, unsafe_allow_html=True)
             
-        st.markdown("</div>", unsafe_allow_html=True) # 컨테이너 닫기
+        st.markdown("</div>", unsafe_allow_html=True) 
     else:
         st.warning("데이터 수집 중입니다.")
+
 # =============================================================================
 # 💻 분기점 2: 기존 메인 대시보드 화면 (일반 접속 시)
 # =============================================================================
@@ -334,14 +339,6 @@ else:
         filtered_df = df_universe[df_universe['등락률'] >= 1.0].copy()
         filtered_df = filtered_df.sort_values(by='거래대금', ascending=False).head(15)
 
-        @st.cache_resource
-        def load_lstm_assets():
-            try:
-                if "stock_lstm_model.h5" not in os.listdir() or "lstm_scaler.pkl" not in os.listdir(): return None, None
-                return tf.keras.models.load_model("stock_lstm_model.h5", compile=False), joblib.load("lstm_scaler.pkl")
-            except: return None, None
-
-        lstm_model, lstm_scaler = load_lstm_assets()
         if lstm_model is not None and lstm_scaler is not None:
             my_bar = st.progress(0, text="🧠 딥러닝 모델 분석 중...")
             ai_scores = []
@@ -376,7 +373,6 @@ else:
         filtered_df['매매상태'] = filtered_df.apply(detect_signal, axis=1)
         top_30 = filtered_df.sort_values(by='10분_상승예측(%)', ascending=False)
         
-        # 데이터프레임 렌더링 (구버전 호환성을 위해 on_select 파라미터 제외)
         output_dict = {
             '테마': top_30['테마'], '실시간 상태': top_30['매매상태'], 'AI 예측스코어': top_30['10분_상승예측(%)'].apply(lambda x: f"🚀 {float(x):.2f}점"), 
             '종목명': top_30['종목명'], '전일 종가(현재가)': top_30['현재가'].apply(lambda x: f"{int(x):,} 원"), '전일 상승률': top_30['등락률'].apply(lambda x: f"+{x:.2f} %"),
@@ -391,4 +387,3 @@ else:
 
     else:
         st.error("데이터를 불러오지 못했습니다.")
-
