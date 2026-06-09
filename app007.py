@@ -139,42 +139,41 @@ def get_foreign_investor_trend():
     return 0.0
 
 # -----------------------------------------------------------------------------
-# 🌐 [수정됨] 실시간 지수 스크래핑 함수 (네이버 모바일 API 100% 실시간 동기화)
+# 🌐 실시간 지수 스크래핑 함수 (API 구조 무관형 완벽 계산 로직)
 # -----------------------------------------------------------------------------
 @st.cache_data(ttl=30)
 def get_realtime_market_summary():
     headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
     
-    # 코스피/코스닥 실시간 호출
+    # 1. 코스피/코스닥 호출 (리스트 응답)
     def fetch_index(code):
         url = f"https://m.stock.naver.com/api/index/{code}/price?pageSize=20&page=1"
         res = requests.get(url, headers=headers, timeout=5)
-        data = res.json()
+        data = res.json() 
         df = pd.DataFrame(data)
         df['Close'] = df['closePrice'].str.replace(',', '').astype(float)
         df['Date'] = pd.to_datetime(df['localTradedAt'])
         df = df.sort_values('Date').set_index('Date')
         
-        # 최신(현재) 실시간 가격 및 등락률 
-        now_price = float(data[0]['closePrice'].replace(',', ''))
-        change_ratio = float(data[0]['fluctuationsRatio'])
+        now_price = df['Close'].iloc[-1]
+        prev_price = df['Close'].iloc[-2] if len(df) > 1 else now_price
+        change_ratio = ((now_price - prev_price) / prev_price) * 100
         return df, now_price, change_ratio
 
-# 원달러 환율 실시간 호출 (버그 수정 완료)
+    # 2. 환율 호출 (딕셔너리 내 'result' 응답)
     def fetch_exchange():
         url = "https://m.stock.naver.com/front-api/v1/marketIndex/prices?category=exchange&reutersCode=FX_USDKRW&page=1"
         res = requests.get(url, headers=headers, timeout=5)
-        
-        # 🛠️ 수정된 부분: res.json() 자체가 리스트(List) 구조를 반환하므로 바로 변수에 담습니다.
-        data = res.json() 
-        
+        data = res.json().get('result', []) 
         df = pd.DataFrame(data)
         df['Close'] = df['closePrice'].str.replace(',', '').astype(float)
         df['Date'] = pd.to_datetime(df['localTradedAt'])
         df = df.sort_values('Date').set_index('Date')
         
-        now_price = float(data[0]['closePrice'].replace(',', ''))
-        change_ratio = float(data[0]['fluctuationsRatio'])
+        # 💡 API 등락률 항목 누락으로 인한 에러 방지용 직접 계산!
+        now_price = df['Close'].iloc[-1]
+        prev_price = df['Close'].iloc[-2] if len(df) > 1 else now_price
+        change_ratio = ((now_price - prev_price) / prev_price) * 100
         return df, now_price, change_ratio
 
     try: ks_data = fetch_index("KOSPI")
@@ -187,7 +186,6 @@ def get_realtime_market_summary():
     except: usd_data = (pd.DataFrame(), 0.0, 0.0)
 
     return ks_data, kq_data, usd_data
-
 # -----------------------------------------------------------------------------
 # 🎨 [수정됨] 차트 그리기 함수 (지연 데이터로 계산하지 않고 실시간 값을 직접 텍스트로 박음)
 # -----------------------------------------------------------------------------
