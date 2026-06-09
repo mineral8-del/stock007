@@ -15,18 +15,13 @@ import tensorflow as tf
 st.set_page_config(layout="wide", page_title="국내주식 실시간 딥러닝 스캐너", initial_sidebar_state="collapsed")
 
 # =============================================================================
-# 🔄 뷰(View) 라우터: 버전 충돌을 방지하는 안전한 파라미터 수집
+# 🔄 뷰(View) 라우터: 확실한 사이드바 스위치 방식으로 변경
 # =============================================================================
-try:
-    # 최신 버전 Streamlit용
-    view_mode = st.query_params.get("view", "main")
-except AttributeError:
-    # 구버전 Streamlit용 호환성 처리
-    try:
-        view_mode = st.experimental_get_query_params().get("view", ["main"])[0]
-    except Exception:
-        view_mode = "main"
-
+with st.sidebar:
+    st.markdown("### ⚙️ 화면 모드 설정")
+    # 스위치를 켜면 True, 끄면 False가 됩니다.
+    is_shorts_mode = st.toggle("📱 쇼츠(세로) 방송 모드 켜기", value=False)
+    st.info("스위치를 켜면 상단 메뉴가 사라지고 쇼츠용 세로 화면으로 바뀝니다.")
 # -----------------------------------------------------------------------------
 # [설정] 한국투자증권 API KEY (기존 방식 원상 복구)
 # -----------------------------------------------------------------------------
@@ -148,22 +143,32 @@ def get_realtime_market_summary():
     return fetch_index("KOSPI"), fetch_index("KOSDAQ"), fetch_exchange()
 
 # =============================================================================
-# 🎬 분기점 1: 쇼츠 송출용 세로 화면 (주소창에 ?view=shorts 입력 시)
+# 🎬 분기점 1: 쇼츠 송출용 세로 화면
 # =============================================================================
-if view_mode == "shorts":
+if is_shorts_mode:
     try:
         from streamlit_autorefresh import st_autorefresh
         st_autorefresh(interval=60000, limit=10000, key="shorts_refresh")
     except: pass
 
+    # CSS 강제 적용 (상단 바 숨김, 배경색 변경 등)
     st.markdown("""
     <style>
-        html, body, [class*="css"] { background-color: #0b1120 !important; color: white !important; }
-        .block-container { padding-top: 1rem !important; max-width: 100% !important; }
-        header[data-testid="stHeader"], footer { display: none !important; }
+        /* 전체 배경 검은색으로 강제 지정 */
+        .stApp { background-color: #0b1120 !important; }
+        
+        /* 헤더(상단 메뉴바), 푸터, 깃허브 아이콘 모두 숨김 */
+        header[data-testid="stHeader"], footer, .stToolbar { display: none !important; }
+        
+        /* 화면 여백 최소화 */
+        .block-container { padding-top: 1rem !important; padding-bottom: 1rem !important; max-width: 100% !important; }
+        
+        /* 스크롤바 숨김 */
         ::-webkit-scrollbar { display: none !important; }
+        
+        /* 텍스트 스타일링 */
         .s-title { text-align: center; color: #facc15; font-size: 2.2rem; font-weight: 900; margin-bottom: 20px; }
-        .s-card { background-color: #1e293b; border-radius: 12px; padding: 15px; margin-bottom: 15px; border: 1px solid #334155; }
+        .s-card { background-color: #1e293b; border-radius: 12px; padding: 15px; margin-bottom: 15px; border: 1px solid #334155; color: white !important; }
         .s-name { font-size: 1.8rem; font-weight: 900; margin-bottom: 5px; }
         .s-price { font-size: 1.4rem; color: #e2e8f0; }
         .s-ratio.up { color: #ef4444; font-weight: bold; }
