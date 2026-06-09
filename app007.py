@@ -10,6 +10,7 @@ from bs4 import BeautifulSoup
 import joblib
 import os
 import tensorflow as tf
+import streamlit.components.v1 as components  # 👈 자바스크립트 시계를 위한 모듈 추가
 
 # 📱 1. 페이지 기본 설정 (무조건 최상단)
 st.set_page_config(layout="wide", page_title="국내주식 실시간 딥러닝 스캐너", initial_sidebar_state="collapsed")
@@ -170,9 +171,28 @@ with st.sidebar:
 if is_shorts_mode:
     try:
         from streamlit_autorefresh import st_autorefresh
-        # ⏱️ 30초(30000ms)마다 데이터 강제 리셋 및 새로고침
+        # ⏱️ 파이썬 데이터는 30초(30000ms)마다 새로고침
         st_autorefresh(interval=30000, limit=20000, key="shorts_refresh")
     except: pass
+
+    # ⏳ 1초마다 시계를 돌리는 자바스크립트 주입 (백그라운드 실행)
+    components.html(
+        """
+        <script>
+        const doc = window.parent.document;
+        function updateTime() {
+            const clock = doc.getElementById('live-clock');
+            if (clock) {
+                const now = new Date();
+                const options = { timeZone: 'Asia/Seoul', hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' };
+                clock.innerText = now.toLocaleTimeString('ko-KR', options) + ' 기준';
+            }
+        }
+        setInterval(updateTime, 1000); // 1초(1000ms)마다 실행
+        </script>
+        """,
+        height=0, width=0
+    )
 
     st.markdown("""
     <style>
@@ -181,11 +201,13 @@ if is_shorts_mode:
         .block-container { padding: 0 !important; max-width: 100% !important; }
         ::-webkit-scrollbar { display: none !important; }
         
-        /* 하단 자막을 위해 padding-bottom 50px 추가 */
         .shorts-container { padding: 12px; padding-bottom: 50px; font-family: 'Pretendard', 'Malgun Gothic', sans-serif; }
         .s-header { text-align: center; padding: 15px 0 5px 0; }
         .s-title { color: #facc15; font-size: 1.8rem; font-weight: 900; margin-bottom: 6px; letter-spacing: -0.5px; }
+        
+        /* 시계 박스 (JS가 이 박스를 찾아서 1초마다 갱신합니다) */
         .s-time-box { display: inline-block; background-color: #1e293b; color: #cbd5e1; padding: 4px 14px; border-radius: 20px; font-size: 0.85rem; font-weight: bold; border: 1px solid #334155; }
+        
         .s-progress-line { height: 3px; background: linear-gradient(90deg, #3b82f6, #eab308, #ef4444); margin: 12px 0 15px 0; border-radius: 3px; }
         .s-card { background-color: #151e2e; border-radius: 12px; padding: 12px 14px; margin-bottom: 10px; border: 1px solid #2a364a; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 4px 6px rgba(0,0,0,0.2); }
         .s-left { display: flex; align-items: center; gap: 10px; }
@@ -206,7 +228,7 @@ if is_shorts_mode:
         .s-score-label { font-size: 0.6rem; color: #94a3b8; font-weight: bold; margin-bottom: 1px; }
         .s-score { font-size: 1.1rem; font-weight: 900; color: #22c55e; } 
         
-        /* 🚨 하단 스크롤 자막(Ticker) CSS */
+        /* 🚨 하단 스크롤 자막(Ticker) */
         .ticker-wrap { position: fixed; bottom: 0; left: 0; width: 100%; overflow: hidden; background-color: #7f1d1d; height: 38px; display: flex; align-items: center; z-index: 9999; }
         .ticker-text { white-space: nowrap; color: white; font-size: 1.05rem; font-weight: 800; animation: ticker 15s linear infinite; }
         @keyframes ticker {
@@ -216,12 +238,13 @@ if is_shorts_mode:
     </style>
     """, unsafe_allow_html=True)
 
+    # id="live-clock" 를 추가하여 자바스크립트가 시간을 계속 덮어씌울 수 있게 만듦
     current_time_str = datetime.now(KST).strftime("%H:%M:%S")
     st.markdown(f"""
     <div class="shorts-container">
         <div class="s-header">
             <div class="s-title">🔴 실시간 AI 타점 스캐너</div>
-            <div class="s-time-box">{current_time_str} 기준</div>
+            <div class="s-time-box" id="live-clock">{current_time_str} 기준</div>
         </div>
         <div class="s-progress-line"></div>
     """, unsafe_allow_html=True)
@@ -290,7 +313,6 @@ if is_shorts_mode:
             </div>
             """, unsafe_allow_html=True)
             
-        # 🚨 하단 스크롤 자막 추가 (컨테이너 닫고 외부 고정 배치)
         st.markdown("""
         </div>
         <div class="ticker-wrap">
@@ -368,7 +390,7 @@ else:
     if not df_universe.empty:
         filtered_df = df_universe[df_universe['등락률'] >= 1.0].copy()
         
-        # 💻 대시보드는 30개로 확장 추출 (.head(30))
+        # 💻 대시보드는 30개로 확장 추출
         filtered_df = filtered_df.sort_values(by='거래대금', ascending=False).head(30)
 
         if lstm_model is not None and lstm_scaler is not None:
