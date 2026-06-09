@@ -10,6 +10,12 @@ from bs4 import BeautifulSoup
 import joblib
 import os
 import tensorflow as tf
+# 이 부분을 찾아서 아래처럼 수정하세요
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
 
 # 📱 1. 페이지 기본 설정 (무조건 최상단)
 st.set_page_config(layout="wide", page_title="국내주식 실시간 딥러닝 스캐너", initial_sidebar_state="collapsed")
