@@ -15,16 +15,25 @@ import tensorflow as tf
 st.set_page_config(layout="wide", page_title="국내주식 실시간 딥러닝 스캐너", initial_sidebar_state="collapsed")
 
 # -----------------------------------------------------------------------------
-# [설정] 한국투자증권 API KEY (기존 원본 그대로 복구)
+# [설정] 한국투자증권 API KEY
 # -----------------------------------------------------------------------------
+import os
+from dotenv import load_dotenv
+
+# 1. 먼저 .env 파일이 있다면 읽어옵니다.
+load_dotenv()
+
 try:
-    KIS_APP_KEY = st.secrets["KIS_APP_KEY"]
-    KIS_APP_SECRET = st.secrets["KIS_APP_SECRET"]
-    
-    APP_KEY = KIS_APP_KEY
-    APP_SECRET = KIS_APP_SECRET
-except KeyError:
-    st.error("⚠️ Streamlit secrets에 'KIS_APP_KEY' 또는 'KIS_APP_SECRET'이 설정되지 않았습니다.")
+    # 2. Streamlit secrets (클라우드 환경 또는 .streamlit/secrets.toml) 우선 시도
+    APP_KEY = st.secrets["KIS_APP_KEY"]
+    APP_SECRET = st.secrets["KIS_APP_SECRET"]
+except Exception:
+    # 3. 실패할 경우 로컬 환경변수(.env)에서 가져오기
+    APP_KEY = os.environ.get("APP_KEY") or os.environ.get("KIS_APP_KEY")
+    APP_SECRET = os.environ.get("APP_SECRET") or os.environ.get("KIS_APP_SECRET")
+
+if not APP_KEY or not APP_SECRET:
+    st.error("⚠️ 서버에 '.env' 파일이나 Streamlit secrets 설정이 존재하지 않습니다. API 키를 세팅해 주세요.")
     st.stop()
 
 URL_BASE = "https://openapi.koreainvestment.com:9443" 
