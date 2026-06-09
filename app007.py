@@ -14,28 +14,18 @@ import tensorflow as tf
 # 📱 1. 페이지 기본 설정 (무조건 최상단)
 st.set_page_config(layout="wide", page_title="국내주식 실시간 딥러닝 스캐너", initial_sidebar_state="collapsed")
 
-# =============================================================================
-# 🔄 뷰(View) 라우터: 버전 충돌을 방지하는 안전한 파라미터 수집
-# =============================================================================
-try:
-    # 최신 버전 Streamlit용
-    view_mode = st.query_params.get("view", "main")
-except AttributeError:
-    # 구버전 Streamlit용 호환성 처리
-    try:
-        view_mode = st.experimental_get_query_params().get("view", ["main"])[0]
-    except Exception:
-        view_mode = "main"
-
 # -----------------------------------------------------------------------------
-# [설정] 한국투자증권 API KEY (기존 방식 원상 복구)
+# [설정] 한국투자증권 API KEY (기존 원본 그대로 복구)
 # -----------------------------------------------------------------------------
 try:
-    APP_KEY = st.secrets["KIS_APP_KEY"]
-    APP_SECRET = st.secrets["KIS_APP_SECRET"]
+    KIS_APP_KEY = st.secrets["KIS_APP_KEY"]
+    KIS_APP_SECRET = st.secrets["KIS_APP_SECRET"]
+    
+    APP_KEY = KIS_APP_KEY
+    APP_SECRET = KIS_APP_SECRET
 except KeyError:
     st.error("⚠️ Streamlit secrets에 'KIS_APP_KEY' 또는 'KIS_APP_SECRET'이 설정되지 않았습니다.")
-    st.stop() # 여기서 멈추더라도 에러 메시지는 화면에 떠야 정상입니다.
+    st.stop()
 
 URL_BASE = "https://openapi.koreainvestment.com:9443" 
 KST = timezone(timedelta(hours=9))
@@ -59,19 +49,15 @@ def get_theme_icon(stock_name):
 def get_access_token():
     headers = {"content-type": "application/json"}
     body = {"grant_type": "client_credentials", "appkey": APP_KEY, "appsecret": APP_SECRET}
-    url = f"{URL_BASE}/oauth2/tokenP"
     try:
-        res = requests.post(url, headers=headers, data=json.dumps(body))
+        res = requests.post(f"{URL_BASE}/oauth2/tokenP", headers=headers, data=json.dumps(body))
         return res.json()["access_token"]
     except: return None
 
 def get_common_headers(tr_id):
     token = get_access_token()
     if not token: token = get_access_token()
-    return {
-        "Content-Type": "application/json", "authorization": f"Bearer {token}",
-        "appKey": APP_KEY, "appSecret": APP_SECRET, "tr_id": tr_id
-    }
+    return {"Content-Type": "application/json", "authorization": f"Bearer {token}", "appKey": APP_KEY, "appSecret": APP_SECRET, "tr_id": tr_id}
 
 @st.cache_data(ttl=30)
 def get_kis_top_trading_value_stocks():
@@ -79,30 +65,22 @@ def get_kis_top_trading_value_stocks():
     headers = get_common_headers("FHPST01710000")
     
     params_mid = {
-        "FID_COND_MRKT_DIV_CODE": "J", "FID_COND_SCR_DIV_CODE": "20171",
-        "FID_INPUT_ISCD": "0000", "FID_DIV_CLS_CODE": "1", 
-        "FID_BLNG_CLS_CODE": "0", "FID_TRGT_CLS_CODE": "111111111", 
-        "FID_TRGT_EXLS_CLS_CODE": "111111", 
-        "FID_INPUT_PRICE_1": "10000", "FID_INPUT_PRICE_2": "80000", 
-        "FID_VOL_CNT": "", "FID_INPUT_DATE_1": ""
+        "FID_COND_MRKT_DIV_CODE": "J", "FID_COND_SCR_DIV_CODE": "20171", "FID_INPUT_ISCD": "0000", "FID_DIV_CLS_CODE": "1", 
+        "FID_BLNG_CLS_CODE": "0", "FID_TRGT_CLS_CODE": "111111111", "FID_TRGT_EXLS_CLS_CODE": "111111", 
+        "FID_INPUT_PRICE_1": "10000", "FID_INPUT_PRICE_2": "80000", "FID_VOL_CNT": "", "FID_INPUT_DATE_1": ""
     }
     params_large = {
-        "FID_COND_MRKT_DIV_CODE": "J", "FID_COND_SCR_DIV_CODE": "20171",
-        "FID_INPUT_ISCD": "0000", "FID_DIV_CLS_CODE": "1", 
-        "FID_BLNG_CLS_CODE": "0", "FID_TRGT_CLS_CODE": "111111111", 
-        "FID_TRGT_EXLS_CLS_CODE": "111111", 
-        "FID_INPUT_PRICE_1": "80000", "FID_INPUT_PRICE_2": "2000000", 
-        "FID_VOL_CNT": "", "FID_INPUT_DATE_1": ""
+        "FID_COND_MRKT_DIV_CODE": "J", "FID_COND_SCR_DIV_CODE": "20171", "FID_INPUT_ISCD": "0000", "FID_DIV_CLS_CODE": "1", 
+        "FID_BLNG_CLS_CODE": "0", "FID_TRGT_CLS_CODE": "111111111", "FID_TRGT_EXLS_CLS_CODE": "111111", 
+        "FID_INPUT_PRICE_1": "80000", "FID_INPUT_PRICE_2": "2000000", "FID_VOL_CNT": "", "FID_INPUT_DATE_1": ""
     }
     
     df_list = []
     for params in [params_mid, params_large]:
         try:
-            res = requests.get(url, headers=headers, params=params, timeout=5)
-            data = res.json()
-            if data['rt_cd'] == '0' and 'output' in data:
-                df_temp = pd.DataFrame(data['output'])[['hts_kor_isnm', 'mksc_shrn_iscd', 'stck_prpr', 'prdy_ctrt', 'acml_tr_pbmn']]
-                df_list.append(df_temp)
+            res = requests.get(url, headers=headers, params=params, timeout=5).json()
+            if res.get('rt_cd') == '0' and 'output' in res:
+                df_list.append(pd.DataFrame(res['output'])[['hts_kor_isnm', 'mksc_shrn_iscd', 'stck_prpr', 'prdy_ctrt', 'acml_tr_pbmn']])
         except: continue
             
     if not df_list: return pd.DataFrame()
@@ -147,10 +125,18 @@ def get_realtime_market_summary():
 
     return fetch_index("KOSPI"), fetch_index("KOSDAQ"), fetch_exchange()
 
+
 # =============================================================================
-# 🎬 분기점 1: 쇼츠 송출용 세로 화면 (주소창에 ?view=shorts 입력 시)
+# ⚙️ 안전한 화면 모드 전환 스위치 (주소창 건드릴 필요 없음)
 # =============================================================================
-if view_mode == "shorts":
+with st.expander("⚙️ OBS 방송 송출용 화면 설정 (클릭하여 열기)"):
+    is_shorts_mode = st.checkbox("📱 쇼츠(세로형) 라이브 모드 켜기", value=False)
+    st.info("이 체크박스를 켜면 즉시 화면이 검은 배경의 세로형 쇼츠 디자인으로 변경됩니다. OBS에서 이 브라우저 창을 캡처하세요.")
+
+# =============================================================================
+# 🎬 분기점 1: 쇼츠 송출용 세로 화면
+# =============================================================================
+if is_shorts_mode:
     try:
         from streamlit_autorefresh import st_autorefresh
         st_autorefresh(interval=60000, limit=10000, key="shorts_refresh")
@@ -192,7 +178,7 @@ if view_mode == "shorts":
         st.warning("데이터 수집 중입니다.")
 
 # =============================================================================
-# 💻 분기점 2: 기존 메인 대시보드 화면 (일반 접속 시)
+# 💻 분기점 2: 기존 메인 대시보드 화면
 # =============================================================================
 else:
     st.title("🚀 실시간 딥러닝 단타 및 시장 동향 대시보드")
@@ -299,7 +285,6 @@ else:
         filtered_df['매매상태'] = filtered_df.apply(detect_signal, axis=1)
         top_30 = filtered_df.sort_values(by='10분_상승예측(%)', ascending=False)
         
-        # 데이터프레임 렌더링 (구버전 호환성을 위해 on_select 파라미터 제외)
         output_dict = {
             '테마': top_30['테마'], '실시간 상태': top_30['매매상태'], 'AI 예측스코어': top_30['10분_상승예측(%)'].apply(lambda x: f"🚀 {float(x):.2f}점"), 
             '종목명': top_30['종목명'], '전일 종가(현재가)': top_30['현재가'].apply(lambda x: f"{int(x):,} 원"), '전일 상승률': top_30['등락률'].apply(lambda x: f"+{x:.2f} %"),
@@ -308,9 +293,61 @@ else:
         }
         
         output_df = pd.DataFrame(output_dict).reset_index(drop=True)
-        st.dataframe(output_df, use_container_width=True)
-        
-        st.info("💡 행별 상세 분석(차트 및 보안관) 기능은 구버전 호환성 유지를 위해 현재 비활성화되어 있습니다. 최신 Streamlit 버전으로 업데이트하시면 복구 가능합니다.")
-
+        selected_rows = st.dataframe(output_df, use_container_width=True, selection_mode="single-row", on_select="rerun")
     else:
         st.error("데이터를 불러오지 못했습니다.")
+        output_df = pd.DataFrame()
+
+    # -----------------------------------------------------------------------------
+    # 차트 및 보안관
+    # -----------------------------------------------------------------------------
+    st.markdown("---")
+    selected_idx = selected_rows.selection.rows[0] if (hasattr(selected_rows, 'selection') and len(selected_rows.selection.rows) > 0) else 0
+
+    if not output_df.empty and selected_idx < len(output_df):
+        target_code, target_name, target_theme, target_price, target_change, target_vol = output_df.iloc[selected_idx]['종목코드'], output_df.iloc[selected_idx]['종목명'], output_df.iloc[selected_idx]['테마'], output_df.iloc[selected_idx]['전일 종가(현재가)'], output_df.iloc[selected_idx]['전일 상승률'], output_df.iloc[selected_idx]['거래대금(백만)']
+        
+        st.markdown(f"<div style='padding:10px 0; border-bottom:1px solid #ddd; margin-bottom:15px;'><span style='font-size:20px; font-weight:bold;'>{target_name}</span> <span style='font-size:14px; color:#555;'>[{target_theme}]</span><span style='font-size:14px; font-weight:bold; margin-left:15px;'>{target_price}</span><span style='font-size:14px; color:#e12929; margin-left:5px;'>{target_change}</span><span style='font-size:14px; color:#888; margin-left:10px;'>누적 거래대금 {target_vol}백만</span></div>", unsafe_allow_html=True)
+        
+        with st.spinner(f"[{target_name}] 1분봉 데이터 및 위험성 진단 중..."):
+            url = f"{URL_BASE}/uapi/domestic-stock/v1/quotations/inquire-time-itemchartprice"
+            headers = get_common_headers("FHKST03010200")
+            params = {"FID_ETC_CLS_CODE": "", "FID_COND_MRKT_DIV_CODE": "J", "FID_INPUT_ISCD": target_code, "FID_INPUT_HOUR_1": datetime.now(KST).strftime("%H%M%S"), "FID_PW_DATA_INCU_YN": "Y"}
+            
+            try:
+                res = requests.get(url, headers=headers, params=params)
+                res_data = res.json()
+                if res_data['rt_cd'] == '0' and 'output2' in res_data:
+                    min_data = res_data['output2'][::-1] 
+                    df_min = pd.DataFrame({"Open": [float(m['stck_oprc']) for m in min_data], "High": [float(m['stck_hgpr']) for m in min_data], "Low": [float(m['stck_lwpr']) for m in min_data], "Close": [float(m['stck_prpr']) for m in min_data], "Volume": [float(m['cntg_vol']) for m in min_data]}, index=pd.to_datetime([f"{m['stck_bsop_date']} {m['stck_cntg_hour']}" for m in min_data], format="%Y%m%d %H%M%S"))
+                    df_min = df_min[df_min['Close'] > 0]
+                    
+                    if not df_min.empty:
+                        df_min['MA5'], df_min['MA20'], df_min['Vol_MA5'] = df_min['Close'].rolling(5).mean(), df_min['Close'].rolling(20).mean(), df_min['Volume'].rolling(5).mean()
+                        df_min['Breakout'] = (df_min['Close'] > df_min['High'].shift(1).rolling(20).max()) & (df_min['Volume'] > df_min['Vol_MA5'] * 1.5)
+                        df_min['Pullback'] = (df_min['MA20'] > df_min['MA20'].shift(3)) & (df_min['Low'] <= df_min['MA20'] * 1.005) & (df_min['Close'] >= df_min['MA20'] * 0.998) & (df_min['Volume'] < df_min['Vol_MA5'])
+                        
+                        c_p, h_10m = df_min['Close'].iloc[-1], df_min['High'].iloc[-10:].max()
+                        
+                        if c_p < df_min['MA5'].iloc[-1] and c_p <= h_10m * 0.97: st.error(f"💣 **[🚨 보안관 비상경보]** **{target_name}** 종목은 5분선이 붕괴되어 급락 위험이 큽니다. 신규 진입 금지!")
+                        elif c_p >= h_10m * 0.98 and not (df_min['MA5'].iloc[-1] > df_min['MA20'].iloc[-1] and df_min['MA5'].iloc[-2] <= df_min['MA20'].iloc[-2]): st.warning(f"⚠️ **[추격매수 경고]** **{target_name}** 종목은 가짜 돌파에 걸릴 확률이 높으니 관망하십시오.")
+                        elif df_min['MA5'].iloc[-1] > df_min['MA20'].iloc[-1] and df_min['MA5'].iloc[-2] <= df_min['MA20'].iloc[-2] and df_min['Volume'].iloc[-1] > df_min['Vol_MA5'].iloc[-1] * 1.5 and c_p < h_10m * 0.96: st.success(f"🚀 **[정석 무릎자리]** **{target_name}** 정배열 초입 돌파가 확인된 타점입니다.")
+                        else: st.info(f"⚪ **[안전 지대]** **{target_name}** 기준선 리스크를 준수 중입니다.")
+                        
+                        df_min['Diff'] = df_min['Close'].diff().fillna(0)
+                        min_price, max_price = df_min['Low'].min(), df_min['High'].max()
+                        price_margin = (max_price - min_price) * 0.1 if max_price != min_price else min_price * 0.01
+                        
+                        fig_stock = go.Figure()
+                        fig_stock.add_trace(go.Candlestick(x=df_min.index, open=df_min['Open'], high=df_min['High'], low=df_min['Low'], close=df_min['Close'], increasing_line_color='#ff4b4b', decreasing_line_color='#4c6198', name="주가"))
+                        fig_stock.add_trace(go.Scatter(x=df_min.index, y=df_min['MA5'], mode='lines', line=dict(color='#ff9900', width=1.5), name="5분선"))
+                        fig_stock.add_trace(go.Scatter(x=df_min.index, y=df_min['MA20'], mode='lines', line=dict(color='#cc00ff', width=1.5), name="20분선"))
+                        
+                        bo_d, pb_d = df_min[df_min['Breakout']], df_min[df_min['Pullback']]
+                        if not bo_d.empty: fig_stock.add_trace(go.Scatter(x=bo_d.index, y=bo_d['High'] + price_margin*0.2, mode='markers+text', marker=dict(symbol='triangle-down', size=10, color='red'), text="🔥돌파", textposition="top center", textfont=dict(color='red', size=11, weight='bold'), name="돌파"))
+                        if not pb_d.empty: fig_stock.add_trace(go.Scatter(x=pb_d.index, y=pb_d['Low'] - price_margin*0.2, mode='markers+text', marker=dict(symbol='triangle-up', size=10, color='blue'), text="💧눌림", textposition="bottom center", textfont=dict(color='blue', size=11, weight='bold'), name="눌림"))
+                        fig_stock.add_trace(go.Bar(x=df_min.index, y=df_min['Volume'], name="거래량", marker_color=['#ff4b4b' if d >= 0 else '#4c6198' for d in df_min['Diff']], opacity=0.7, yaxis='y2'))
+                        
+                        fig_stock.update_layout(template="plotly_white", height=650, margin=dict(l=10, r=60, t=30, b=20), xaxis=dict(showgrid=True, gridcolor='#f0f0f0', type='date', tickformat='%H:%M', rangeslider=dict(visible=False)), yaxis=dict(side='right', showgrid=True, gridcolor='#f0f0f0', tickformat=',', range=[min_price - price_margin, max_price + price_margin], domain=[0.3, 1]), yaxis2=dict(side='right', showgrid=False, tickformat=',', domain=[0, 0.2]), hovermode='x unified', legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
+                        st.plotly_chart(fig_stock, use_container_width=True)
+            except: pass
