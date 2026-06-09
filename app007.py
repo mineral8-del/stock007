@@ -314,14 +314,14 @@ if is_shorts_mode:
             """, unsafe_allow_html=True)
             
         st.markdown("""
+            <div style="height: 70px;"></div> 
         </div>
         <div class="ticker-wrap">
             <div class="ticker-text">
                 [투자 유의사항] 본 방송은 딥러닝 AI 모델(LSTM)에 의한 단순 데이터 제공용이며 투자를 권유하지 않습니다. 모든 투자의 책임은 투자자 본인에게 있습니다.
             </div>
         </div>
-        """, unsafe_allow_html=True) 
-
+        """, unsafe_allow_html=True)
     else:
         st.warning("데이터 수집 중입니다.")
 
