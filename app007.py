@@ -139,92 +139,63 @@ def get_foreign_investor_trend():
     return 0.0
 
 # -----------------------------------------------------------------------------
-# 🌐 실시간 지수 스크래핑 함수 (API 구조 무관형 완벽 계산 로직)
+# 🌐 [수정됨] 실시간 텍스트 데이터 스크래핑 함수 (네이버 모바일 API / HTML 병행)
 # -----------------------------------------------------------------------------
 @st.cache_data(ttl=30)
 def get_realtime_market_summary():
     headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
     
-    # 1. 코스피/코스닥 호출 (리스트 응답)
+    # 1. 코스피/코스닥 실시간 텍스트 호출
     def fetch_index(code):
-        url = f"https://m.stock.naver.com/api/index/{code}/price?pageSize=20&page=1"
-        res = requests.get(url, headers=headers, timeout=5)
-        data = res.json() 
-        df = pd.DataFrame(data)
-        df['Close'] = df['closePrice'].str.replace(',', '').astype(float)
-        df['Date'] = pd.to_datetime(df['localTradedAt'])
-        df = df.sort_values('Date').set_index('Date')
-        
-        now_price = df['Close'].iloc[-1]
-        prev_price = df['Close'].iloc[-2] if len(df) > 1 else now_price
-        change_ratio = ((now_price - prev_price) / prev_price) * 100
-        return df, now_price, change_ratio
+        try:
+            url = f"https://m.stock.naver.com/api/index/{code}/basic"
+            res = requests.get(url, headers=headers, timeout=5)
+            data = res.json()
+            price = data.get('closePrice', '0')
+            ratio = float(data.get('fluctuationsRatio', 0.0))
+            return price, ratio
+        except:
+            return "-", 0.0
 
-    # 2. 환율 호출 (딕셔너리 내 'result' 응답)
+    # 2. 환율 호출 (가장 안정적인 네이버 금융 웹 스크래핑 방식으로 완전 우회)
     def fetch_exchange():
-        url = "https://m.stock.naver.com/front-api/v1/marketIndex/prices?category=exchange&reutersCode=FX_USDKRW&page=1"
-        res = requests.get(url, headers=headers, timeout=5)
-        data = res.json().get('result', []) 
-        df = pd.DataFrame(data)
-        df['Close'] = df['closePrice'].str.replace(',', '').astype(float)
-        df['Date'] = pd.to_datetime(df['localTradedAt'])
-        df = df.sort_values('Date').set_index('Date')
-        
-        # 💡 API 등락률 항목 누락으로 인한 에러 방지용 직접 계산!
-        now_price = df['Close'].iloc[-1]
-        prev_price = df['Close'].iloc[-2] if len(df) > 1 else now_price
-        change_ratio = ((now_price - prev_price) / prev_price) * 100
-        return df, now_price, change_ratio
+        try:
+            res = requests.get("https://finance.naver.com/marketindex/", headers=headers, timeout=5)
+            soup = BeautifulSoup(res.text, 'html.parser')
+            price = soup.select_one("#exchangeList .value").text
+            change_val = soup.select_one("#exchangeList .change").text
+            blind = soup.select_one("#exchangeList .blind").text
+            sign = "+" if "상승" in blind else "-" if "하락" in blind else ""
+            return price, f"{sign}{change_val}"
+        except:
+            return "-", "-"
 
-    try: ks_data = fetch_index("KOSPI")
-    except: ks_data = (pd.DataFrame(), 0.0, 0.0)
-        
-    try: kq_data = fetch_index("KOSDAQ")
-    except: kq_data = (pd.DataFrame(), 0.0, 0.0)
-        
-    try: usd_data = fetch_exchange()
-    except: usd_data = (pd.DataFrame(), 0.0, 0.0)
+    ks_price, ks_ratio = fetch_index("KOSPI")
+    kq_price, kq_ratio = fetch_index("KOSDAQ")
+    usd_price, usd_change = fetch_exchange()
 
-    return ks_data, kq_data, usd_data
-# -----------------------------------------------------------------------------
-# 🎨 [수정됨] 차트 그리기 함수 (지연 데이터로 계산하지 않고 실시간 값을 직접 텍스트로 박음)
-# -----------------------------------------------------------------------------
-def create_pro_chart(df, title, color_hex, now_price, change_ratio):
-    if df.empty: return go.Figure().update_layout(title="데이터 로드 실패")
-    
-    fig = go.Figure()
-    fig.add_trace(go.Scatter(
-        x=df.index, y=df['Close'], mode='lines', 
-        line=dict(color=color_hex, width=3), fill='tozeroy', 
-        fillcolor=f"rgba({int(color_hex[1:3],16)}, {int(color_hex[3:5],16)}, {int(color_hex[5:7],16)}, 0.1)", 
-        name=title
-    ))
-    
-    sign = "+" if change_ratio > 0 else ""
-    color_text = '#ff4b4b' if change_ratio > 0 else ('#0068c9' if change_ratio < 0 else '#ffffff')
-    
-    fig.update_layout(
-        title=dict(
-            text=f"<b>{title}</b> <span style='font-size:14px; color:{color_text}'>{now_price:,.2f} ({sign}{change_ratio:.2f}%)</span>", 
-            x=0.05, y=0.85
-        ), 
-        height=280, margin=dict(l=10, r=10, t=50, b=10), template="plotly_dark", 
-        paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", 
-        xaxis=dict(showgrid=False), yaxis=dict(showgrid=True, gridcolor='rgba(255,255,255,0.05)', side='right'), 
-        hovermode="x unified"
-    )
-    return fig
+    return (ks_price, ks_ratio), (kq_price, kq_ratio), (usd_price, usd_change)
 
 # -----------------------------------------------------------------------------
-# 메인 화면 렌더링 부분 (여기도 교체해주세요)
+# 📊 메인 화면 렌더링 (그래프 삭제 후 깔끔한 텍스트 위젯으로 대체)
 # -----------------------------------------------------------------------------
 st.subheader("🌐 글로벌 시장 및 주요 지수 실시간 모니터링")
-ks_data, kq_data, usd_data = get_realtime_market_summary()
+(ks_price, ks_ratio), (kq_price, kq_ratio), (usd_price, usd_change) = get_realtime_market_summary()
 
 m_col1, m_col2, m_col3 = st.columns(3)
-with m_col1: st.plotly_chart(create_pro_chart(ks_data[0], "KOSPI", "#FF4B4B", ks_data[1], ks_data[2]), use_container_width=True)
-with m_col2: st.plotly_chart(create_pro_chart(kq_data[0], "KOSDAQ", "#00CC96", kq_data[1], kq_data[2]), use_container_width=True)
-with m_col3: st.plotly_chart(create_pro_chart(usd_data[0], "USD/KRW", "#636EFA", usd_data[1], usd_data[2]), use_container_width=True)
+
+with m_col1:
+    ks_delta = f"{ks_ratio:+.2f}%" if ks_price != "-" else "데이터 없음"
+    st.metric(label="📊 KOSPI", value=ks_price, delta=ks_delta)
+
+with m_col2:
+    kq_delta = f"{kq_ratio:+.2f}%" if kq_price != "-" else "데이터 없음"
+    st.metric(label="📈 KOSDAQ", value=kq_price, delta=kq_delta)
+
+with m_col3:
+    usd_delta = f"{usd_change} 원" if usd_price != "-" else "데이터 없음"
+    # 환율 상승은 주식 시장에 악재이므로 delta_color="inverse"를 적용해 색상을 반전시켰습니다.
+    st.metric(label="💵 USD/KRW (원달러 환율)", value=f"{usd_price} 원", delta=usd_delta, delta_color="inverse")
 
 st.markdown("---")
 st.subheader("💼 외국인 선물 수급 및 시장 주도 상태")
