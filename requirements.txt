@@ -9,3 +9,5 @@ scikit-learn
 joblib
 # 아래 버전을 내 컴퓨터의 pip show 결과와 똑같이 적어주세요. (예: 2.15.0)
 tensorflow==2.21.0
+tensorflow
+streamlit-autorefresh
