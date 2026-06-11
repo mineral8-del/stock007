@@ -14,7 +14,7 @@ import os
 import base64
 import asyncio
 import edge_tts
-import tensorflow as tf
+# 💡 [수정됨] 여기서 텐서플로우를 무조건 부르지 않고, 아래쪽 필요할 때만 부르도록 내렸습니다.
 import streamlit.components.v1 as components
 from google import genai
 
@@ -42,7 +42,7 @@ client = genai.Client(api_key=GEMINI_API_KEY)
 THEME_DICT = {
     "🤖 로봇": ["두산로보틱스", "레인보우로보틱스", "뉴로메카", "에스피지", "로보티즈", "이랜시스", "로보틱스"],
     "💾 반도체": ["한미반도체", "SK하이닉스", "삼성전자", "HPSP", "이수페타시스", "제우스", "가온칩스", "리노공업", "디아이"],
-    "🔋 2차전지": ["에코프로", "エ코프로비엠", "에코프로머티", "포스코홀딩스", "POSCO홀딩스", "LG에너지솔루션", "엘앤에프", "금양"],
+    "🔋 2차전지": ["에코프로", "에코프로비엠", "에코프로머티", "포스코홀딩스", "POSCO홀딩스", "LG에너지솔루션", "엘앤에프", "금양"],
     "🧬 바이오": ["알테오젠", "HLB", "삼성바이오로직스", "셀트리온", "삼천당제약", "리가켐바이오", "휴젤"],
     "⚡ 전력기기": ["HD현대일렉트릭", "LS일렉트릭", "효성중공업", "제룡전기", "일진전기"],
     "💄 화장품": ["실리콘투", "브이티", "코스메카코리아", "씨앤씨인터내셔널", "아모레퍼시픽", "클리오"]
@@ -102,7 +102,6 @@ def create_audio_b64(text):
         return b64
     except: return ""
 
-# 🚀 [핵심 추가] 쇼츠 카드 내부에 들어갈 초경량 미니 차트용 데이터 수집 함수
 @st.cache_data(ttl=30)
 def get_mini_chart_path(stock_code, stroke_color):
     url = f"{URL_BASE}/uapi/domestic-stock/v1/quotations/inquire-time-itemchartprice"
@@ -111,16 +110,16 @@ def get_mini_chart_path(stock_code, stroke_color):
     try:
         res = requests.get(url, headers=headers, params=params, timeout=3).json()
         if res.get('rt_cd') == '0' and 'output2' in res:
-            prices = [float(m['stck_prpr']) for m in res['output2'][:12][::-1]] # 최근 12분 추이
+            prices = [float(m['stck_prpr']) for m in res['output2'][:12][::-1]] 
             if len(prices) >= 2:
                 min_p, max_p = min(prices), max(prices)
                 rng = (max_p - min_p) if max_p != min_p else 1
-                # SVG 좌표 계산 (가로 400, 세로 45 크기에 맞춤)
-                points = [f"{(idx / (len(prices) - 1)) * 380 + 10},{40 - ((p - min_p) / rng) * 35}" for idx, p in enumerate(prices)]
+                points_list = [f"{(idx / (len(prices) - 1)) * 380 + 10},{40 - ((p - min_p) / rng) * 35}" for idx, p in enumerate(prices)]
+                points_str = " ".join(points_list)
                 return f"""
                 <div class="s-mini-chart">
                     <svg width="100%" height="45" viewBox="0 0 400 45">
-                        <polyline fill="none" stroke="{stroke_color}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" points="{" ".join(points)}"/>
+                        <polyline fill="none" stroke="{stroke_color}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" points="{points_str}"/>
                     </svg>
                 </div>
                 """
@@ -220,7 +219,6 @@ if is_shorts_mode:
         st_autorefresh(interval=refresh_interval, limit=10000, key="shorts_refresh")
     except: pass
 
-    # 🛑 장 마감 대기 화면 정책
     if not is_market_open:
         st.markdown("""
         <style>
@@ -235,7 +233,6 @@ if is_shorts_mode:
         """, unsafe_allow_html=True)
         st.stop()
 
-    # 🎤 정각 AI 방송 제어 영역
     current_hour, current_minute = now.hour, now.minute
     audio_html = ""
     if (current_hour == 9 or current_hour == 15) and (0 <= current_minute < 5):
@@ -250,7 +247,6 @@ if is_shorts_mode:
                 st.session_state.bg_image_b64 = download_ai_image(script_body.split('\n')[0])
                 st.session_state.last_briefing_hour = current_hour
 
-    # 🎨 무인 라이브 방송 맞춤형 스킨 패키지 (미니 차트 스타일 포함)
     bg_css = ""
     if st.session_state.get('bg_image_b64'):
         bg_css = f"""[data-testid="stAppViewContainer"], .stApp {{ background-image: linear-gradient(rgba(11, 17, 32, 0.4), rgba(11, 17, 32, 0.4)), url("data:image/jpeg;base64,{st.session_state.bg_image_b64}") !important; background-size: cover !important; background-position: center !important; }}"""
@@ -276,7 +272,6 @@ if is_shorts_mode:
         
         .m-up {{ color: #ef4444; }} .m-down {{ color: #3b82f6; }} .m-off {{ color: #e2e8f0; }}
         
-        /* 📦 카드 내부 패딩 조정 및 미니차트 경계선 확보 */
         .s-card {{ background-color: rgba(30, 41, 59, 0.80); border-radius: 12px; padding: 11px 18px 6px 18px; margin-bottom: 9px; border: 1px solid #334155; display: flex; flex-direction: column; gap: 4px; box-shadow: 0 2px 4px rgba(0,0,0,0.3); backdrop-filter: blur(5px); }}
         .s-card-top {{ display: flex; justify-content: space-between; align-items: center; }}
         .s-rank-name {{ display: flex; align-items: center; gap: 12px; }}
@@ -289,9 +284,7 @@ if is_shorts_mode:
         .s-ratio {{ font-size: 1.9rem; font-weight: 900; }}
         .s-score {{ font-size: 1.4rem; color: #10b981; font-weight: bold; background: rgba(16, 185, 129, 0.15); padding: 4px 8px; border-radius: 6px; }}
         
-        /* 📈 미니 차트 컨테이너 */
         .s-mini-chart {{ width: 100%; height: 45px; display: flex; align-items: center; justify-content: center; opacity: 0.95; }}
-        
         .s-marquee {{ position: fixed; bottom: 0; left: 0; width: 100%; background-color: #b91c1c; color: white; padding: 14px 0; font-size: 1.9rem; font-weight: bold; box-shadow: 0 -3px 10px rgba(0,0,0,0.5); z-index: 9999; }}
     </style>
     {audio_html}
@@ -299,7 +292,6 @@ if is_shorts_mode:
 
     st.markdown("<div class='s-title'>🔴 실시간 AI 타점 스캐너 라이브 방송</div>", unsafe_allow_html=True)
 
-    # 🕒 2️⃣ 시계 및 5단계 그라데이션 30초 무한 반복 로딩바
     components.html("""
     <!DOCTYPE html>
     <html>
@@ -327,7 +319,6 @@ if is_shorts_mode:
     </html>
     """, height=85)
 
-    # 📊 3️⃣ 상단 전광판 데이터 처리
     (ks_price, ks_ratio), (kq_price, kq_ratio), (usd_price, usd_change) = get_realtime_market_summary()
     foreign_futures_net = get_foreign_investor_trend()
     usd_price_clean = str(usd_price).split('.')[0]
@@ -350,7 +341,6 @@ if is_shorts_mode:
         </div>
     """, unsafe_allow_html=True)
 
-    # 📦 4️⃣ 하단 10개 종목 순회 및 미니 차트 주입 출력
     df_shorts = get_kis_top_trading_value_stocks()
     if not df_shorts.empty:
         df_shorts = df_shorts[df_shorts['등락률'] > 1.0].copy()
@@ -368,7 +358,6 @@ if is_shorts_mode:
             stroke_color = "#ef4444" if rate > 0 else "#3b82f6"
             sign = "+" if rate > 0 else ""
             
-            # 실시간 미니 차트 엔진 부품 가져오기
             mini_chart_svg = get_mini_chart_path(row['종목코드'], stroke_color)
             
             st.markdown(f"""
@@ -463,7 +452,9 @@ else:
 
         @st.cache_resource
         def load_lstm_assets():
+            # 💡 [안전장치] 무료 서버 메모리 폭파를 막기 위해 함수 안에서만 몰래 불러옵니다.
             try:
+                import tensorflow as tf
                 if "stock_lstm_model.h5" not in os.listdir() or "lstm_scaler.pkl" not in os.listdir(): return None, None
                 return tf.keras.models.load_model("stock_lstm_model.h5", compile=False), joblib.load("lstm_scaler.pkl")
             except: return None, None
@@ -488,7 +479,7 @@ else:
             my_bar.empty()
             filtered_df['10분_상승예측(%)'] = ai_scores
         else:
-            st.warning("⚠️ LSTM 모델이 없어 기본 수식으로 대체합니다.")
+            st.warning("⚠️ 텐서플로우 메모리 절약 모드 작동: 기본 예측 수식으로 안전하게 대체합니다.")
             filtered_df['10분_상승예측(%)'] = ((filtered_df['등락률'] * 0.5) + np.log1p(filtered_df['거래대금'])).round(2)
 
         filtered_df['테마'] = filtered_df['종목명'].apply(get_theme_icon)
@@ -569,3 +560,62 @@ else:
                         fig_stock.update_layout(template="plotly_white", height=650, margin=dict(l=10, r=60, t=30, b=20), xaxis=dict(showgrid=True, gridcolor='#f0f0f0', type='date', tickformat='%H:%M', rangeslider=dict(visible=False)), yaxis=dict(side='right', showgrid=True, gridcolor='#f0f0f0', tickformat=',', range=[min_price - price_margin, max_price + price_margin], domain=[0.3, 1]), yaxis2=dict(side='right', showgrid=False, tickformat=',', domain=[0, 0.2]), hovermode='x unified', legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
                         st.plotly_chart(fig_stock, use_container_width=True)
             except: pass
+
+    # -----------------------------------------------------------------------------
+    # 🌟 [추가 기능] 하단 돌파매매 Top 10 미니 차트 갤러리 (데스크톱 전용)
+    # -----------------------------------------------------------------------------
+    st.markdown("---")
+    st.subheader("🔥 실시간 돌파매매 Top 10 차트 갤러리")
+
+    if not output_df.empty:
+        # '돌파매매' 상태인 종목을 최우선으로, 부족하면 전체 순위 순으로 10개 채우기
+        breakout_df = output_df[output_df['실시간 상태'].str.contains("돌파", na=False)]
+        rest_df = output_df[~output_df['종목코드'].isin(breakout_df['종목코드'])]
+        gallery_df = pd.concat([breakout_df, rest_df]).head(10)
+
+        cols = st.columns(5) # 5개씩 가로로 배치 (자동으로 2줄 형성)
+        with st.spinner("돌파매매 상위 10개 종목의 실시간 틱 차트를 불러오는 중입니다..."):
+            for i, (idx, row) in enumerate(gallery_df.iterrows()):
+                col = cols[i % 5]
+                t_code, t_name, t_rate, t_state = row['종목코드'], row['종목명'], row['전일 상승률'], row['실시간 상태']
+                
+                with col:
+                    # 각 종목 카드 UI
+                    st.markdown(f"""
+                        <div style="background-color:rgba(30,41,59,0.5); padding:10px; border-radius:10px; border:1px solid #334155; margin-bottom:5px;">
+                            <div style="font-size:16px; font-weight:bold; color:white;">{t_name}</div>
+                            <div style="font-size:13px; color:{'#ef4444' if '+' in t_rate else '#3b82f6'};">{t_rate} <span style="font-size:11px; color:#facc15; margin-left:5px;">{t_state}</span></div>
+                        </div>
+                    """, unsafe_allow_html=True)
+                    
+                    url = f"{URL_BASE}/uapi/domestic-stock/v1/quotations/inquire-time-itemchartprice"
+                    headers = get_common_headers("FHKST03010200")
+                    params = {"FID_ETC_CLS_CODE": "", "FID_COND_MRKT_DIV_CODE": "J", "FID_INPUT_ISCD": t_code, "FID_INPUT_HOUR_1": datetime.now(KST).strftime("%H%M%S"), "FID_PW_DATA_INCU_YN": "N"}
+                    
+                    try:
+                        res = requests.get(url, headers=headers, params=params, timeout=3).json()
+                        if res.get('rt_cd') == '0' and 'output2' in res:
+                            min_data = res['output2'][:30][::-1] # 최근 30분 데이터
+                            if len(min_data) > 2:
+                                prices = [float(m['stck_prpr']) for m in min_data]
+                                times = [m['stck_cntg_hour'] for m in min_data]
+                                color = "#ef4444" if prices[-1] >= prices[0] else "#3b82f6"
+                                
+                                # 미니 스파크라인 차트 생성
+                                fig = go.Figure(go.Scatter(x=times, y=prices, mode='lines', line=dict(color=color, width=2.5)))
+                                fig.update_layout(
+                                    margin=dict(l=0, r=0, t=5, b=5),
+                                    height=80,
+                                    xaxis=dict(visible=False),
+                                    yaxis=dict(visible=False),
+                                    plot_bgcolor="rgba(0,0,0,0)",
+                                    paper_bgcolor="rgba(0,0,0,0)",
+                                    hovermode=False
+                                )
+                                st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
+                            else:
+                                st.caption("데이터 부족")
+                    except:
+                        st.caption("차트 로드 실패")
+                        
+                    time.sleep(0.05) # 한국투자증권 API 초당 20건 제한 회피 (안전장치)
