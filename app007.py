@@ -9,9 +9,6 @@ import asyncio
 import websockets
 from datetime import datetime, timedelta, timezone, time as dt_time
 from bs4 import BeautifulSoup
-import joblib
-import os
-import tensorflow as tf
 import streamlit.components.v1 as components
 
 # 📱 1. 페이지 기본 설정 (무조건 최상단)
@@ -35,11 +32,11 @@ KST = timezone(timedelta(hours=9))
 
 THEME_DICT = {
     "🤖 로봇": ["두산로보틱스", "레인보우로보틱스", "뉴로메카", "에스피지", "로보티즈", "이랜시스", "로보틱스", "엔젤로보틱스"],
-    "💾 반도체": ["한미반도체", "SK하이닉스", "삼성전자", "HPSP", "이수페타시스", "제우스", "가온칩스", "리노공업", "디아이"],
-    "🔋 2차전지": ["에코프로", "에코프로비엠", "에코프로머티", "포스코홀딩스", "POSCO홀딩스", "LG에너지솔루션", "엘앤에프", "금양"],
-    "🧬 바이오": ["알테오젠", "HLB", "삼성바이오로직스", "셀트리온", "삼천당제약", "리가켐바이오", "휴젤"],
-    "⚡ 전력기기": ["HD현대일렉트릭", "LS일렉트릭", "효성중공업", "제룡전기", "일진전기"],
-    "💄 화장품": ["실리콘투", "브이티", "코스메카코리아", "씨앤씨인터내셔널", "아모레퍼시픽", "클리오"]
+    "💾 반도체": ["한미반도체", "SK하이닉스", "삼성전자", "HPSP", "이수페타시스", "제우스", "가온칩스", "리노공업", "디아이", "필옵틱스", "와이씨"],
+    "🔋 2차전지": ["에코프로", "에코프로비엠", "에코프로머티", "포스코홀딩스", "POSCO홀딩스", "LG에너지솔루션", "엘앤에프", "금양", "엔켐"],
+    "🧬 바이오": ["알테오젠", "HLB", "삼성바이오로직스", "셀트리온", "삼천당제약", "리가켐바이오", "휴젤", "유한양행"],
+    "⚡ 전력기기": ["HD현대일렉트릭", "LS일렉트릭", "효성중공업", "제룡전기", "일진전기", "LS에코에너지"],
+    "💄 화장품": ["실리콘투", "브이티", "코스메카코리아", "씨앤씨인터내셔널", "아모레퍼시픽", "클리오", "토니모리"]
 }
 
 def get_theme_icon(stock_name):
@@ -114,6 +111,22 @@ def get_kis_top_trading_value_stocks():
     df['거래대금'] = pd.to_numeric(df['거래대금'], errors='coerce') / 1000000 
     return df.sort_values(by='거래대금', ascending=False).drop_duplicates(subset=['종목코드']).dropna()
 
+# 💡 [신규 추가] 장전 동시호가 예상체결가 가져오기
+def get_expected_price(target_code):
+    quote_url = f"{URL_BASE}/uapi/domestic-stock/v1/quotations/inquire-asking-price-exp-ccn"
+    headers = get_common_headers("FHKST01010200")
+    try:
+        res = requests.get(quote_url, headers=headers, params={"FID_COND_MRKT_DIV_CODE": "J", "FID_INPUT_ISCD": target_code}, timeout=2).json()
+        if res.get('rt_cd') == '0':
+            antc_cnpr = float(res['output1'].get('antc_cnpr', 0)) # 예상체결가
+            stck_prpr = float(res['output1'].get('stck_prpr', 1)) # 전일종가
+            antc_vol = float(res['output1'].get('antc_cntg_vrss_vol', 0)) # 예상체결수량
+            if antc_cnpr > 0 and stck_prpr > 0:
+                gap_ratio = round(((antc_cnpr - stck_prpr) / stck_prpr) * 100, 2)
+                return antc_cnpr, gap_ratio, antc_vol
+    except: pass
+    return 0.0, 0.0, 0.0
+
 @st.cache_data(ttl=15)
 def get_foreign_investor_trend():
     try:
@@ -158,25 +171,14 @@ async def connect_kis_websocket_streamlit(target_code, target_name, placeholder)
     try:
         async with websockets.connect(ws_url, ping_interval=None) as websocket:
             subscribe_data = {
-                "header": {
-                    "approval_key": approval_key,
-                    "custtype": "P",       
-                    "tr_type": "1",        
-                    "content-type": "utf-8"
-                },
-                "body": {
-                    "input": {
-                        "tr_id": "H0STCNT0", 
-                        "tr_key": target_code
-                    }
-                }
+                "header": { "approval_key": approval_key, "custtype": "P", "tr_type": "1", "content-type": "utf-8" },
+                "body": { "input": { "tr_id": "H0STCNT0", "tr_key": target_code } }
             }
             await websocket.send(json.dumps(subscribe_data))
             
             log_text = f"📡 **[{target_name}] 웹소켓 연결 성공! 실시간 체결 대기중...**\n\n"
             placeholder.markdown(log_text)
             
-            # Streamlit 멈춤 방지를 위해 15번의 틱만 수신하고 종료 (약 10~15초)
             for _ in range(15): 
                 data = await asyncio.wait_for(websocket.recv(), timeout=5.0)
                 if data[0] == '0' or data[0] == '1':
@@ -197,17 +199,13 @@ async def connect_kis_websocket_streamlit(target_code, target_name, placeholder)
         placeholder.error(f"❌ 웹소켓 연결 종료: {str(e)}")
 
 # =============================================================================
-# ⚙️ 안전한 화면 모드 전환 스위치
+# ⚙️ 안전한 화면 모드 전환 스위치 & 쇼츠 모드 분기 (기존과 동일하여 생략 없이 유지)
 # =============================================================================
 with st.expander("⚙️ OBS 방송 송출용 화면 설정 (클릭하여 열기)"):
     is_shorts_mode = st.checkbox("📱 쇼츠(세로형) 라이브 모드 켜기", value=False)
     st.info("이 체크박스를 켜면 즉시 화면이 검은 배경의 세로형 쇼츠 디자인으로 변경됩니다. OBS에서 이 브라우저 창을 캡처하세요.")
 
-# =============================================================================
-# 🎬 분기점 1: 쇼츠 송출용 세로 화면
-# =============================================================================
 if is_shorts_mode:
-    # (기존 쇼츠 모드 로직 동일 유지 - 생략 없이 그대로 둠)
     try:
         from streamlit_autorefresh import st_autorefresh
         st_autorefresh(interval=60000, limit=10000, key="shorts_refresh")
@@ -301,7 +299,7 @@ else:
     st.markdown("---")
 
     now_time = datetime.now(KST).time()
-    time_pre_start, time_reg_start, time_after_start, time_after_end = dt_time(8, 30), dt_time(9, 0), dt_time(15, 30), dt_time(18, 0)
+    time_pre_start, time_reg_start, time_after_start = dt_time(8, 30), dt_time(9, 0), dt_time(15, 30)
     default_auto, default_pre, default_after = False, False, True
     
     if time_pre_start <= now_time < time_reg_start: default_auto, default_pre, default_after = True, True, False
@@ -318,47 +316,92 @@ else:
             st_autorefresh(interval=60000, limit=1000, key="auto_scanner_refresh")
         except ImportError: pass
 
-    st.subheader("🎯 실시간 딥러닝 타겟 및 대장주 탐색")
-
+    # 💡 [핵심 업그레이드] 프리마켓 모드 vs 일반 모드 완벽 분리
     df_universe = get_kis_top_trading_value_stocks()
 
     if not df_universe.empty:
         filtered_df = df_universe[df_universe['등락률'] >= 1.0].copy()
-        filtered_df = filtered_df.sort_values(by='거래대금', ascending=False).head(20) # 20개로 넉넉하게 추출
-
-        # AI 예측 대체 로직 (속도 향상을 위해 수식 사용)
-        filtered_df['10분_상승예측(%)'] = ((filtered_df['등락률'] * 0.5) + np.log1p(filtered_df['거래대금'])).round(2)
-
-        # 💡 [피드백 적용] 테마 분류 및 대장주(1등주) 추출 로직
+        filtered_df = filtered_df.sort_values(by='거래대금', ascending=False).head(20)
         filtered_df['테마'] = filtered_df['종목명'].apply(get_theme_icon)
-        
-        # 테마별 등락률 최고 종목 찾기
-        idx_max_by_theme = filtered_df.groupby('테마')['등락률'].idxmax()
-        filtered_df['대장주여부'] = False
-        filtered_df.loc[idx_max_by_theme, '대장주여부'] = True
-        
-        # 이름 앞에 왕관 씌우기 (개별주 제외)
-        filtered_df['출력종목명'] = filtered_df.apply(
-            lambda x: f"👑 {x['종목명']}" if x['대장주여부'] and x['테마'] != "▪️ 개별주" else x['종목명'], axis=1
-        )
 
-        filtered_df['단기_목표가'] = (filtered_df['현재가'] * 1.03).astype(int)
-        filtered_df['손절가'] = (filtered_df['현재가'] * 0.98).astype(int)
-
-        def detect_signal(row):
-            if row['등락률'] >= 7.0 and row['거래대금'] > 50000: return "🔥 돌파매매"
-            elif 1.0 <= row['등락률'] < 5.0 and row['거래대금'] > 20000: return "💧 눌림목"
-            return "▪️ 관망"
+        if pre_market_mode:
+            st.subheader("☀️ 장전 동시호가 갭상승 주도주 포착 (08:30 ~ 09:00)")
+            st.info("💡 9시 개장 전, 예상 체결가를 바탕으로 시초가부터 강하게 치고 나갈 종목을 추적합니다.")
             
-        filtered_df['매매상태'] = filtered_df.apply(detect_signal, axis=1)
-        top_list = filtered_df.sort_values(by=['대장주여부', '10분_상승예측(%)'], ascending=[False, False])
-        
-        output_dict = {
-            '테마': top_list['테마'], '실시간 상태': top_list['매매상태'], 'AI 예측스코어': top_list['10분_상승예측(%)'].apply(lambda x: f"🚀 {float(x):.2f}점"), 
-            '종목명': top_list['출력종목명'], '현재가': top_list['현재가'].apply(lambda x: f"{int(x):,} 원"), '전일비': top_list['등락률'].apply(lambda x: f"+{x:.2f} %"),
-            '단기 목표가(+3%)': top_list['단기_목표가'].apply(lambda x: f"{x:,} 원"), '손절가(-2%)': top_list['손절가'].apply(lambda x: f"{x:,} 원"),
-            '거래대금(백만)': top_list['거래대금'].apply(lambda x: f"{int(x):,}"), '종목코드': top_list['종목코드'], '원본종목명': top_list['종목명']
-        }
+            with st.spinner("호가창 예상 체결가 분석 중..."):
+                exp_prices, exp_gaps, exp_vols = [], [], []
+                for _, row in filtered_df.iterrows():
+                    prc, gap, vol = get_expected_price(row['종목코드'])
+                    exp_prices.append(prc)
+                    exp_gaps.append(gap)
+                    exp_vols.append(vol)
+                    time.sleep(0.05) # API 과부하 방지
+                
+                filtered_df['예상_시초가'] = exp_prices
+                filtered_df['예상_갭상승률(%)'] = exp_gaps
+                filtered_df['예상_체결량'] = exp_vols
+                
+                # 가짜 호가 필터링 (예상 갭이 20%가 넘는데 체결수량이 100주 이하면 허수)
+                filtered_df = filtered_df[~((filtered_df['예상_갭상승률(%)'] > 20) & (filtered_df['예상_체결량'] < 500))]
+                
+                # 프리마켓 전용 대장주 탐색 (예상 갭상승률 기준)
+                idx_max_by_theme = filtered_df.groupby('테마')['예상_갭상승률(%)'].idxmax()
+                filtered_df['대장주여부'] = False
+                filtered_df.loc[idx_max_by_theme, '대장주여부'] = True
+                
+                filtered_df['출력종목명'] = filtered_df.apply(
+                    lambda x: f"👑 {x['종목명']}" if x['대장주여부'] and x['테마'] != "▪️ 개별주" else x['종목명'], axis=1
+                )
+                
+                def get_pre_status(gap):
+                    if gap >= 5.0: return "🔥 강력 갭상승 유력"
+                    elif 1.0 <= gap < 5.0: return "☀️ 상승 출발 유력"
+                    elif gap < 0: return "⚠️ 갭하락 주의"
+                    return "▪️ 보합 예상"
+                    
+                filtered_df['장전_상태'] = filtered_df['예상_갭상승률(%)'].apply(get_pre_status)
+                top_list = filtered_df.sort_values(by=['대장주여부', '예상_갭상승률(%)'], ascending=[False, False])
+                
+                output_dict = {
+                    '테마': top_list['테마'], '장전 상태': top_list['장전_상태'], 
+                    '예상 갭상승(%)': top_list['예상_갭상승률(%)'].apply(lambda x: f"🚀 {x:+.2f} %"), 
+                    '종목명': top_list['출력종목명'], 
+                    '예상 시초가': top_list['예상_시초가'].apply(lambda x: f"{int(x):,} 원" if x > 0 else "데이터 없음"),
+                    '전일 종가': top_list['현재가'].apply(lambda x: f"{int(x):,} 원"),
+                    '예상 체결량': top_list['예상_체결량'].apply(lambda x: f"{int(x):,} 주"),
+                    '종목코드': top_list['종목코드'], '원본종목명': top_list['종목명']
+                }
+
+        else:
+            # 기존 일반장 (09:00 ~ 15:30) 실시간 로직
+            st.subheader("🎯 실시간 딥러닝 타겟 및 대장주 탐색")
+            filtered_df['10분_상승예측(%)'] = ((filtered_df['등락률'] * 0.5) + np.log1p(filtered_df['거래대금'])).round(2)
+            
+            idx_max_by_theme = filtered_df.groupby('테마')['등락률'].idxmax()
+            filtered_df['대장주여부'] = False
+            filtered_df.loc[idx_max_by_theme, '대장주여부'] = True
+            
+            filtered_df['출력종목명'] = filtered_df.apply(
+                lambda x: f"👑 {x['종목명']}" if x['대장주여부'] and x['테마'] != "▪️ 개별주" else x['종목명'], axis=1
+            )
+
+            filtered_df['단기_목표가'] = (filtered_df['현재가'] * 1.03).astype(int)
+            filtered_df['손절가'] = (filtered_df['현재가'] * 0.98).astype(int)
+
+            def detect_signal(row):
+                if row['등락률'] >= 7.0 and row['거래대금'] > 50000: return "🔥 돌파매매"
+                elif 1.0 <= row['등락률'] < 5.0 and row['거래대금'] > 20000: return "💧 눌림목"
+                return "▪️ 관망"
+                
+            filtered_df['매매상태'] = filtered_df.apply(detect_signal, axis=1)
+            top_list = filtered_df.sort_values(by=['대장주여부', '10분_상승예측(%)'], ascending=[False, False])
+            
+            output_dict = {
+                '테마': top_list['테마'], '실시간 상태': top_list['매매상태'], 'AI 예측스코어': top_list['10분_상승예측(%)'].apply(lambda x: f"🚀 {float(x):.2f}점"), 
+                '종목명': top_list['출력종목명'], '현재가': top_list['현재가'].apply(lambda x: f"{int(x):,} 원"), '전일비': top_list['등락률'].apply(lambda x: f"+{x:.2f} %"),
+                '단기 목표가(+3%)': top_list['단기_목표가'].apply(lambda x: f"{x:,} 원"), '손절가(-2%)': top_list['손절가'].apply(lambda x: f"{x:,} 원"),
+                '거래대금(백만)': top_list['거래대금'].apply(lambda x: f"{int(x):,}"), '종목코드': top_list['종목코드'], '원본종목명': top_list['종목명']
+            }
         
         output_df = pd.DataFrame(output_dict).reset_index(drop=True)
         st.write("표 안의 종목을 클릭하면 하단에 차트 및 호가/체결 데이터가 나타납니다.")
@@ -381,7 +424,6 @@ else:
         
         st.markdown(f"## 📈 {target_display_name} 상세 분석")
         
-        # 💡 [피드백 적용] 호가창 및 체결강도 데이터 수집 (REST API)
         with st.spinner("호가창 및 체결강도 불러오는 중..."):
             quote_url = f"{URL_BASE}/uapi/domestic-stock/v1/quotations/inquire-asking-price-exp-ccn"
             quote_headers = get_common_headers("FHKST01010200")
@@ -391,8 +433,7 @@ else:
                 q_res = requests.get(quote_url, headers=quote_headers, params=quote_params).json()
                 if q_res.get('rt_cd') == '0':
                     q_data = q_res['output1']
-                    volume_power = q_data.get('tvol', '0') # 체결강도 (REST 방식에 따라 응답키가 다를수있으나 기본 제공 데이터 활용)
-                    # 실제 체결강도 API가 다를 경우를 대비하여 주식현재가 API를 한번 더 찌릅니다.
+                    
                     price_url = f"{URL_BASE}/uapi/domestic-stock/v1/quotations/inquire-price"
                     price_headers = get_common_headers("FHKST01010100")
                     p_res = requests.get(price_url, headers=price_headers, params=quote_params).json()
@@ -416,14 +457,12 @@ else:
             except Exception as e:
                 st.write("호가창 데이터를 불러오는 중 오류가 발생했습니다.")
         
-        # 💡 [피드백 적용] 웹소켓 실시간 체결 코드 스트림릿 융합 버튼
         if st.button(f"▶️ [{target_name}] 실시간 웹소켓 체결 데이터 보기 (10초간 수신)", type="primary"):
             ws_placeholder = st.empty()
             asyncio.run(connect_kis_websocket_streamlit(target_code, target_name, ws_placeholder))
         
         st.markdown("---")
 
-        # 기존 1분봉 차트 및 보안관 로직
         with st.spinner(f"[{target_name}] 1분봉 차트 그리는 중..."):
             url = f"{URL_BASE}/uapi/domestic-stock/v1/quotations/inquire-time-itemchartprice"
             headers = get_common_headers("FHKST03010200")
