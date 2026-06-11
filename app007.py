@@ -283,4 +283,289 @@ if is_shorts_mode:
         .s-rank {{ background-color: #ef4444; color: white; border-radius: 50%; min-width: 32px; height: 32px; display: flex; justify-content: center; align-items: center; font-size: 1.5rem; font-weight: bold; }}
         .s-name {{ font-size: 2.2rem; font-weight: 900; }}
         .s-eval {{ font-size: 1.3rem; color: #facc15; font-weight: bold; background: #0f172a; padding: 4px 8px; border-radius: 6px; border: 1px solid #475569; }}
-        .s-card-bottom {{ display: flex; justify-content: space-between; align-items: baseline; border-bottom: 1px dashed rgba(255,255,
+        .s-card-bottom {{ display: flex; justify-content: space-between; align-items: baseline; border-bottom: 1px dashed rgba(255,255,255,0.1); padding-bottom: 5px; margin-bottom: 3px; }}
+        .s-price-box {{ display: flex; align-items: baseline; gap: 10px; }}
+        .s-price {{ font-size: 2.0rem; color: #e2e8f0; font-weight: bold; }}
+        .s-ratio {{ font-size: 1.9rem; font-weight: 900; }}
+        .s-score {{ font-size: 1.4rem; color: #10b981; font-weight: bold; background: rgba(16, 185, 129, 0.15); padding: 4px 8px; border-radius: 6px; }}
+        
+        /* 📈 미니 차트 컨테이너 */
+        .s-mini-chart {{ width: 100%; height: 45px; display: flex; align-items: center; justify-content: center; opacity: 0.95; }}
+        
+        .s-marquee {{ position: fixed; bottom: 0; left: 0; width: 100%; background-color: #b91c1c; color: white; padding: 14px 0; font-size: 1.9rem; font-weight: bold; box-shadow: 0 -3px 10px rgba(0,0,0,0.5); z-index: 9999; }}
+    </style>
+    {audio_html}
+    """, unsafe_allow_html=True)
+
+    st.markdown("<div class='s-title'>🔴 실시간 AI 타점 스캐너 라이브 방송</div>", unsafe_allow_html=True)
+
+    # 🕒 2️⃣ 시계 및 5단계 그라데이션 30초 무한 반복 로딩바
+    components.html("""
+    <!DOCTYPE html>
+    <html>
+    <head>
+    <style>
+        body { margin: 0; padding: 0; display: flex; flex-direction: column; justify-content: center; align-items: center; width: 100%; }
+        .s-time { color: #94a3b8; font-family: 'Malgun Gothic', sans-serif; font-size: 1.4rem; font-weight: bold; background-color: rgba(30, 41, 59, 0.9); padding: 4px 15px; border-radius: 20px; border: 1px solid #334155; margin-bottom: 15px; }
+        .progress-container { width: 96%; max-width: 980px; height: 15px; background-color: rgba(15, 23, 42, 0.8); border-radius: 8px; border: 1px solid #334155; overflow: hidden; box-shadow: inset 0 2px 4px rgba(0,0,0,0.6); }
+        .progress-bar { height: 100%; width: 0%; background-image: linear-gradient(-45deg, rgba(255, 255, 255, 0.25) 25%, transparent 25%, transparent 50%, rgba(255, 255, 255, 0.25) 50%, rgba(255, 255, 255, 0.25) 75%, transparent 75%, transparent); background-size: 30px 30px; animation: fillBar 30s linear infinite, moveStripes 1s linear infinite; }
+        @keyframes fillBar { 0% { width: 0%; background-color: #3b82f6; } 25% { background-color: #06b6d4; } 50% { background-color: #10b981; } 75% { background-color: #f59e0b; } 99% { width: 100%; background-color: #ef4444; } 100% { width: 100%; background-color: #ef4444; } }
+        @keyframes moveStripes { 0% { background-position: 0 0; } 100% { background-position: 30px 0; } }
+    </style>
+    </head>
+    <body>
+        <div id="live-clock" class="s-time">🕒 시간 동기화 중...</div>
+        <div class="progress-container"><div class="progress-bar"></div></div>
+        <script>
+            function updateClock() {
+                const now = new Date();
+                document.getElementById('live-clock').innerText = '🕒 ' + now.getFullYear() + '년 ' + String(now.getMonth() + 1).padStart(2, '0') + '월 ' + String(now.getDate()).padStart(2, '0') + '일 ' + String(now.getHours()).padStart(2, '0') + '시 ' + String(now.getMinutes()).padStart(2, '0') + '분 ' + String(now.getSeconds()).padStart(2, '0') + '초';
+            }
+            setInterval(updateClock, 1000); updateClock();
+        </script>
+    </body>
+    </html>
+    """, height=85)
+
+    # 📊 3️⃣ 상단 전광판 데이터 처리
+    (ks_price, ks_ratio), (kq_price, kq_ratio), (usd_price, usd_change) = get_realtime_market_summary()
+    foreign_futures_net = get_foreign_investor_trend()
+    usd_price_clean = str(usd_price).split('.')[0]
+    ks_class = "m-up" if ks_ratio > 0 else ("m-down" if ks_ratio < 0 else "m-off")
+    kq_class = "m-up" if kq_ratio > 0 else ("m-down" if kq_ratio < 0 else "m-off")
+    usd_class = "m-up" if "+" in str(usd_change) else ("m-down" if "-" in str(usd_change) else "m-off")
+    foreign_val = f"+{foreign_futures_net:,.0f}억" if foreign_futures_net > 0 else f"{foreign_futures_net:,.0f}억"
+    foreign_class = "m-up" if foreign_futures_net > 0 else ("m-down" if foreign_futures_net < 0 else "m-off")
+
+    st.markdown(f"""
+        <div class="s-market-board">
+            <div class="s-market-col">
+                <div class="s-m-item"><span class="s-m-label">코스피</span><span class="s-m-val {ks_class}">{ks_price}<span class="s-m-sub">{ks_ratio:+.2f}%</span></span></div>
+                <div class="s-m-item"><span class="s-m-label">코스닥</span><span class="s-m-val {kq_class}">{kq_price}<span class="s-m-sub">{kq_ratio:+.2f}%</span></span></div>
+            </div>
+            <div class="s-market-col s-market-right">
+                <div class="s-m-item"><span class="s-m-label">환율(원)</span><span class="s-m-val {usd_class}">{usd_price_clean}</span></div>
+                <div class="s-m-item"><span class="s-m-label">외인선물</span><span class="s-m-val {foreign_class}">{foreign_val}</span></div>
+            </div>
+        </div>
+    """, unsafe_allow_html=True)
+
+    # 📦 4️⃣ 하단 10개 종목 순회 및 미니 차트 주입 출력
+    df_shorts = get_kis_top_trading_value_stocks()
+    if not df_shorts.empty:
+        df_shorts = df_shorts[df_shorts['등락률'] > 1.0].copy()
+        df_shorts['스코어'] = ((df_shorts['등락률'] * 0.5) + np.log1p(df_shorts['거래대금'])).round(2)
+        top_10 = df_shorts.sort_values(by='스코어', ascending=False).head(10)
+        
+        for i, (index, row) in enumerate(top_10.iterrows(), 1):
+            rate = row['등락률']
+            vol = row['거래대금']
+            
+            if rate >= 7.0 and vol > 500: eval_text = "🔥 급등돌파"
+            elif 1.0 <= rate < 5.0 and vol > 200: eval_text = "💧 눌림목"
+            else: eval_text = "⚡ AI포착"
+            
+            stroke_color = "#ef4444" if rate > 0 else "#3b82f6"
+            sign = "+" if rate > 0 else ""
+            
+            # 실시간 미니 차트 엔진 부품 가져오기
+            mini_chart_svg = get_mini_chart_path(row['종목코드'], stroke_color)
+            
+            st.markdown(f"""
+                <div class="s-card">
+                    <div class="s-card-top">
+                        <div class="s-rank-name">
+                            <div class="s-rank">{i}</div>
+                            <div class="s-name">{row['종목명']}</div>
+                        </div>
+                        <div class="s-eval">{eval_text}</div>
+                    </div>
+                    <div class="s-card-bottom">
+                        <div class="s-price-box">
+                            <span class="s-price">{int(row['현재가']):,}원</span>
+                            <span class="s-ratio m-up">{sign}{rate:.2f}%</span>
+                        </div>
+                        <div class="s-score">AI {row['스코어']:.1f}점</div>
+                    </div>
+                    {mini_chart_svg}
+                </div>
+            """, unsafe_allow_html=True)
+    else:
+        st.warning("데이터 수집 중입니다.")
+        
+    st.markdown("""<marquee class="s-marquee" scrollamount="8">⚠️ [투자 유의사항] 본 방송은 데이터 제공용이며 투자를 권유하지 않습니다. 최종 책임은 투자자 본인에게 있습니다.</marquee>""", unsafe_allow_html=True)
+
+# =============================================================================
+# 💻 분기점 2: 기존 메인 대시보드 화면 (데스크톱 와이드 모드)
+# =============================================================================
+else:
+    st.title("🚀 실시간 딥러닝 단타 및 시장 동향 대시보드")
+    st.subheader("🌐 실시간 시장 종합 상황판")
+
+    (ks_price, ks_ratio), (kq_price, kq_ratio), (usd_price, usd_change) = get_realtime_market_summary()
+
+    if 'foreign_futures_net' not in st.session_state: 
+        st.session_state.foreign_futures_net = get_foreign_investor_trend()
+    foreign_futures_net = st.session_state.foreign_futures_net
+
+    if foreign_futures_net > 0: value_str, program_intensity, trade_signal, delta_msg, score_color = f"+{foreign_futures_net:,} 억 원", min(100, int(50 + (foreign_futures_net / 10))), "🚀 강력 매수", "매수 우위", "normal"
+    elif foreign_futures_net < 0: value_str, program_intensity, trade_signal, delta_msg, score_color = f"{foreign_futures_net:,} 억 원", max(0, int(50 - (abs(foreign_futures_net) / 10))), "⚠️ 강한 매도", "매도 우위", "inverse"
+    else: value_str, program_intensity, trade_signal, delta_msg, score_color = "0.0 억 원", 50, "⏸️ 대기 중", "데이터 없음", "off"
+
+    col1, col2, col3, col4, col5 = st.columns(5)
+    with col1: st.metric("📊 KOSPI", ks_price, f"{ks_ratio:+.2f}%" if ks_price != "-" else "데이터 없음")
+    with col2: st.metric("📈 KOSDAQ", kq_price, f"{kq_ratio:+.2f}%" if kq_price != "-" else "데이터 없음")
+    with col3: st.metric("💵 환율(USD/KRW)", f"{usd_price} 원", f"{usd_change} 원" if usd_price != "-" else "데이터 없음", delta_color="inverse")
+    with col4: st.metric("🏢 외국인 선물", value_str, delta_msg, delta_color=score_color)
+    with col5: st.metric("🎯 우량주 매력도", f"{program_intensity} 점", trade_signal, delta_color=score_color)
+
+    col_empty, col_btn = st.columns([8, 2])
+    with col_btn:
+        if st.button("🔄 실시간 동기화", use_container_width=True):
+            st.session_state.foreign_futures_net = get_foreign_investor_trend()
+            get_realtime_market_summary.clear()
+            get_kis_top_trading_value_stocks.clear()
+            st.rerun()
+
+    st.markdown("---")
+
+    now_time = datetime.now(KST).time()
+    time_pre_start, time_reg_start, time_after_start, time_after_end = dt_time(8, 30), dt_time(9, 0), dt_time(15, 30), dt_time(18, 0)
+    default_auto, default_pre, default_after = False, False, True
+    
+    if time_pre_start <= now_time < time_reg_start: default_auto, default_pre, default_after = True, True, False
+    elif time_reg_start <= now_time < time_after_start: default_auto, default_pre, default_after = True, False, False
+
+    st.info("🤖 **오토 파일럿 작동 중:** 현재 시각에 맞춰 최적의 모드가 자동으로 켜집니다.")
+
+    col_t1, col_t2, col_t3 = st.columns(3)
+    with col_t1: auto_refresh = st.toggle("⏱️ 1분 자동 스캐닝 켜기", value=default_auto)
+    with col_t2: pre_market_mode = st.toggle("☀️ 프리마켓 (08:30~09:00)", value=default_pre)
+    with col_t3: after_market_mode = st.toggle("🌙 애프터 마켓 (15:30~18:00)", value=default_after)
+
+    if auto_refresh:
+        try:
+            from streamlit_autorefresh import st_autorefresh
+            st_autorefresh(interval=60000, limit=1000, key="auto_scanner_refresh")
+            st.toast("🔄 스캐너 감시 중!", icon="👀")
+            get_kis_top_trading_value_stocks.clear()
+        except ImportError: pass
+
+    if pre_market_mode: st.subheader("🎯 오늘 아침 시초가 타겟 (장전 예상 갭상승)")
+    elif after_market_mode: st.subheader("🎯 시간외 단일가 및 내일 시초가 타겟")
+    else: st.subheader("🎯 실시간 단타 타겟 (딥러닝 스코어)")
+
+    df_universe = get_kis_top_trading_value_stocks()
+
+    if not df_universe.empty:
+        filtered_df = df_universe[df_universe['등락률'] >= 1.0].copy()
+        filtered_df = filtered_df.sort_values(by='거래대금', ascending=False).head(15)
+
+        @st.cache_resource
+        def load_lstm_assets():
+            try:
+                if "stock_lstm_model.h5" not in os.listdir() or "lstm_scaler.pkl" not in os.listdir(): return None, None
+                return tf.keras.models.load_model("stock_lstm_model.h5", compile=False), joblib.load("lstm_scaler.pkl")
+            except: return None, None
+
+        lstm_model, lstm_scaler = load_lstm_assets()
+        if lstm_model is not None and lstm_scaler is not None:
+            my_bar = st.progress(0, text="🧠 딥러닝 모델 분석 중...")
+            ai_scores = []
+            for i, (idx, row) in enumerate(filtered_df.iterrows()):
+                try:
+                    res = requests.get(f"{URL_BASE}/uapi/domestic-stock/v1/quotations/inquire-time-itemchartprice", headers=get_common_headers("FHKST03010200"), params={"FID_ETC_CLS_CODE": "", "FID_COND_MRKT_DIV_CODE": "J", "FID_INPUT_ISCD": row['종목코드'], "FID_INPUT_HOUR_1": datetime.now(KST).strftime("%H%M%S"), "FID_PW_DATA_INCU_YN": "N"}).json()
+                    if res.get('rt_cd') == '0' and 'output2' in res:
+                        recent_10_mins = res['output2'][:10][::-1] 
+                        if len(recent_10_mins) == 10:
+                            scaled_min = lstm_scaler.transform(pd.DataFrame({"Open": [float(m['stck_oprc']) for m in recent_10_mins], "High": [float(m['stck_hgpr']) for m in recent_10_mins], "Low": [float(m['stck_lwpr']) for m in recent_10_mins], "Close": [float(m['stck_prpr']) for m in recent_10_mins], "Volume": [float(m['cntg_vol']) for m in recent_10_mins]}))
+                            ai_scores.append(np.round(lstm_model.predict(np.expand_dims(scaled_min, axis=0), verbose=0)[0][0], 2))
+                        else: ai_scores.append(0.0)
+                    else: ai_scores.append(0.0)
+                except: ai_scores.append(0.0)
+                time.sleep(0.1)
+                my_bar.progress((i + 1) / len(filtered_df))
+            my_bar.empty()
+            filtered_df['10분_상승예측(%)'] = ai_scores
+        else:
+            st.warning("⚠️ LSTM 모델이 없어 기본 수식으로 대체합니다.")
+            filtered_df['10분_상승예측(%)'] = ((filtered_df['등락률'] * 0.5) + np.log1p(filtered_df['거래대금'])).round(2)
+
+        filtered_df['테마'] = filtered_df['종목명'].apply(get_theme_icon)
+        filtered_df['단기_목표가'] = (filtered_df['현재가'] * 1.03).astype(int)
+        filtered_df['손절가'] = (filtered_df['현재가'] * 0.98).astype(int)
+
+        def detect_signal(row):
+            if row['등락률'] >= 7.0 and row['거래대금'] > 50000: return "🔥 돌파매매"
+            elif 1.0 <= row['등락률'] < 5.0 and row['거래대금'] > 20000: return "💧 눌림목"
+            return "▪️ 관망"
+            
+        filtered_df['매매상태'] = filtered_df.apply(detect_signal, axis=1)
+        top_30 = filtered_df.sort_values(by='10분_상승예측(%)', ascending=False)
+        
+        output_dict = {
+            '테마': top_30['테마'], '실시간 상태': top_30['매매상태'], 'AI 예측스코어': top_30['10분_상승예측(%)'].apply(lambda x: f"🚀 {float(x):.2f}점"), 
+            '종목명': top_30['종목명'], '전일 종가(현재가)': top_30['현재가'].apply(lambda x: f"{int(x):,} 원"), '전일 상승률': top_30['등락률'].apply(lambda x: f"+{x:.2f} %"),
+            '단기 목표가(+3%)': top_30['단기_목표가'].apply(lambda x: f"{x:,} 원"), '손절가(-2%)': top_30['손절가'].apply(lambda x: f"{x:,} 원"),
+            '거래대금(백만)': top_30['거래대금'].apply(lambda x: f"{int(x):,}"), '종목코드': top_30['종목코드']
+        }
+        
+        output_df = pd.DataFrame(output_dict).reset_index(drop=True)
+        selected_rows = st.dataframe(output_df, use_container_width=True, selection_mode="single-row", on_select="rerun")
+    else:
+        st.error("데이터를 불러오지 못했습니다.")
+        output_df = pd.DataFrame()
+
+    # -----------------------------------------------------------------------------
+    # 데스크톱 하단 개별 1분봉 분석 차트 영역
+    # -----------------------------------------------------------------------------
+    st.markdown("---")
+    selected_idx = selected_rows.selection.rows[0] if (hasattr(selected_rows, 'selection') and len(selected_rows.selection.rows) > 0) else 0
+
+    if not output_df.empty and selected_idx < len(output_df):
+        target_code, target_name, target_theme, target_price, target_change, target_vol = output_df.iloc[selected_idx]['종목코드'], output_df.iloc[selected_idx]['종목명'], output_df.iloc[selected_idx]['테마'], output_df.iloc[selected_idx]['전일 종가(현재가)'], output_df.iloc[selected_idx]['전일 상승률'], output_df.iloc[selected_idx]['거래대금(백만)']
+        
+        st.markdown(f"<div style='padding:10px 0; border-bottom:1px solid #ddd; margin-bottom:15px;'><span style='font-size:20px; font-weight:bold;'>{target_name}</span> <span style='font-size:14px; color:#555;'>[{target_theme}]</span><span style='font-size:14px; font-weight:bold; margin-left:15px;'>{target_price}</span><span style='font-size:14px; color:#e12929; margin-left:5px;'>{target_change}</span><span style='font-size:14px; color:#888; margin-left:10px;'>누적 거래대금 {target_vol}백만</span></div>", unsafe_allow_html=True)
+        
+        with st.spinner(f"[{target_name}] 1분봉 데이터 및 위험성 진단 중..."):
+            url = f"{URL_BASE}/uapi/domestic-stock/v1/quotations/inquire-time-itemchartprice"
+            headers = get_common_headers("FHKST03010200")
+            params = {"FID_ETC_CLS_CODE": "", "FID_COND_MRKT_DIV_CODE": "J", "FID_INPUT_ISCD": target_code, "FID_INPUT_HOUR_1": datetime.now(KST).strftime("%H%M%S"), "FID_PW_DATA_INCU_YN": "Y"}
+            
+            try:
+                res = requests.get(url, headers=headers, params=params)
+                res_data = res.json()
+                if res_data['rt_cd'] == '0' and 'output2' in res_data:
+                    min_data = res_data['output2'][::-1] 
+                    df_min = pd.DataFrame({"Open": [float(m['stck_oprc']) for m in min_data], "High": [float(m['stck_hgpr']) for m in min_data], "Low": [float(m['stck_lwpr']) for m in min_data], "Close": [float(m['stck_prpr']) for m in min_data], "Volume": [float(m['cntg_vol']) for m in min_data]}, index=pd.to_datetime([f"{m['stck_bsop_date']} {m['stck_cntg_hour']}" for m in min_data], format="%Y%m%d %H%M%S"))
+                    df_min = df_min[df_min['Close'] > 0]
+                    
+                    if not df_min.empty:
+                        df_min['MA5'], df_min['MA20'], df_min['Vol_MA5'] = df_min['Close'].rolling(5).mean(), df_min['Close'].rolling(20).mean(), df_min['Volume'].rolling(5).mean()
+                        df_min['Breakout'] = (df_min['Close'] > df_min['High'].shift(1).rolling(20).max()) & (df_min['Volume'] > df_min['Vol_MA5'] * 1.5)
+                        df_min['Pullback'] = (df_min['MA20'] > df_min['MA20'].shift(3)) & (df_min['Low'] <= df_min['MA20'] * 1.005) & (df_min['Close'] >= df_min['MA20'] * 0.998) & (df_min['Volume'] < df_min['Vol_MA5'])
+                        
+                        c_p, h_10m = df_min['Close'].iloc[-1], df_min['High'].iloc[-10:].max()
+                        
+                        if c_p < df_min['MA5'].iloc[-1] and c_p <= h_10m * 0.97: st.error(f"💣 **[🚨 보안관 비상경보]** **{target_name}** 종목은 5분선이 붕괴되어 급락 위험이 큽니다. 신규 진입 금지!")
+                        elif c_p >= h_10m * 0.98 and not (df_min['MA5'].iloc[-1] > df_min['MA20'].iloc[-1] and df_min['MA5'].iloc[-2] <= df_min['MA20'].iloc[-2]): st.warning(f"⚠️ **[추격매수 경고]** **{target_name}** 종목은 가짜 돌파에 걸릴 확률이 높으니 관망하십시오.")
+                        elif df_min['MA5'].iloc[-1] > df_min['MA20'].iloc[-1] and df_min['MA5'].iloc[-2] <= df_min['MA20'].iloc[-2] and df_min['Volume'].iloc[-1] > df_min['Vol_MA5'].iloc[-1] * 1.5 and c_p < h_10m * 0.96: st.success(f"🚀 **[정석 무릎자리]** **{target_name}** 정배열 초입 돌파가 확인된 타점입니다.")
+                        else: st.info(f"⚪ **[안전 지대]** **{target_name}** 기준선 리스크를 준수 중입니다.")
+                        
+                        df_min['Diff'] = df_min['Close'].diff().fillna(0)
+                        min_price, max_price = df_min['Low'].min(), df_min['High'].max()
+                        price_margin = (max_price - min_price) * 0.1 if max_price != min_price else min_price * 0.01
+                        
+                        fig_stock = go.Figure()
+                        fig_stock.add_trace(go.Candlestick(x=df_min.index, open=df_min['Open'], high=df_min['High'], low=df_min['Low'], close=df_min['Close'], increasing_line_color='#ff4b4b', decreasing_line_color='#4c6198', name="주가"))
+                        fig_stock.add_trace(go.Scatter(x=df_min.index, y=df_min['MA5'], mode='lines', line=dict(color='#ff9900', width=1.5), name="5분선"))
+                        fig_stock.add_trace(go.Scatter(x=df_min.index, y=df_min['MA20'], mode='lines', line=dict(color='#cc00ff', width=1.5), name="20분선"))
+                        
+                        bo_d, pb_d = df_min[df_min['Breakout']], df_min[df_min['Pullback']]
+                        if not bo_d.empty: fig_stock.add_trace(go.Scatter(x=bo_d.index, y=bo_d['High'] + price_margin*0.2, mode='markers+text', marker=dict(symbol='triangle-down', size=10, color='red'), text="🔥돌파", textposition="top center", textfont=dict(color='red', size=11, weight='bold'), name="돌파"))
+                        if not pb_d.empty: fig_stock.add_trace(go.Scatter(x=pb_d.index, y=pb_d['Low'] - price_margin*0.2, mode='markers+text', marker=dict(symbol='triangle-up', size=10, color='blue'), text="💧눌림", textposition="bottom center", textfont=dict(color='blue', size=11, weight='bold'), name="눌림"))
+                        fig_stock.add_trace(go.Bar(x=df_min.index, y=df_min['Volume'], name="거래량", marker_color=['#ff4b4b' if d >= 0 else '#4c6198' for d in df_min['Diff']], opacity=0.7, yaxis='y2'))
+                        
+                        fig_stock.update_layout(template="plotly_white", height=650, margin=dict(l=10, r=60, t=30, b=20), xaxis=dict(showgrid=True, gridcolor='#f0f0f0', type='date', tickformat='%H:%M', rangeslider=dict(visible=False)), yaxis=dict(side='right', showgrid=True, gridcolor='#f0f0f0', tickformat=',', range=[min_price - price_margin, max_price + price_margin], domain=[0.3, 1]), yaxis2=dict(side='right', showgrid=False, tickformat=',', domain=[0, 0.2]), hovermode='x unified', legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
+                        st.plotly_chart(fig_stock, use_container_width=True)
+            except: pass
