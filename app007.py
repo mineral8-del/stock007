@@ -14,7 +14,6 @@ import os
 import base64
 import asyncio
 import edge_tts
-# 💡 [수정됨] 여기서 텐서플로우를 무조건 부르지 않고, 아래쪽 필요할 때만 부르도록 내렸습니다.
 import streamlit.components.v1 as components
 from google import genai
 
@@ -452,7 +451,6 @@ else:
 
         @st.cache_resource
         def load_lstm_assets():
-            # 💡 [안전장치] 무료 서버 메모리 폭파를 막기 위해 함수 안에서만 몰래 불러옵니다.
             try:
                 import tensorflow as tf
                 if "stock_lstm_model.h5" not in os.listdir() or "lstm_scaler.pkl" not in os.listdir(): return None, None
@@ -508,7 +506,7 @@ else:
         output_df = pd.DataFrame()
 
     # -----------------------------------------------------------------------------
-    # 데스크톱 하단 개별 1분봉 분석 차트 영역
+    # 💡 데스크톱 하단 개별 AI 경고 및 분석 메시지 (차트 제거됨)
     # -----------------------------------------------------------------------------
     st.markdown("---")
     selected_idx = selected_rows.selection.rows[0] if (hasattr(selected_rows, 'selection') and len(selected_rows.selection.rows) > 0) else 0
@@ -518,7 +516,7 @@ else:
         
         st.markdown(f"<div style='padding:10px 0; border-bottom:1px solid #ddd; margin-bottom:15px;'><span style='font-size:20px; font-weight:bold;'>{target_name}</span> <span style='font-size:14px; color:#555;'>[{target_theme}]</span><span style='font-size:14px; font-weight:bold; margin-left:15px;'>{target_price}</span><span style='font-size:14px; color:#e12929; margin-left:5px;'>{target_change}</span><span style='font-size:14px; color:#888; margin-left:10px;'>누적 거래대금 {target_vol}백만</span></div>", unsafe_allow_html=True)
         
-        with st.spinner(f"[{target_name}] 1분봉 데이터 및 위험성 진단 중..."):
+        with st.spinner(f"[{target_name}] 위험성 진단 중..."):
             url = f"{URL_BASE}/uapi/domestic-stock/v1/quotations/inquire-time-itemchartprice"
             headers = get_common_headers("FHKST03010200")
             params = {"FID_ETC_CLS_CODE": "", "FID_COND_MRKT_DIV_CODE": "J", "FID_INPUT_ISCD": target_code, "FID_INPUT_HOUR_1": datetime.now(KST).strftime("%H%M%S"), "FID_PW_DATA_INCU_YN": "Y"}
@@ -533,8 +531,6 @@ else:
                     
                     if not df_min.empty:
                         df_min['MA5'], df_min['MA20'], df_min['Vol_MA5'] = df_min['Close'].rolling(5).mean(), df_min['Close'].rolling(20).mean(), df_min['Volume'].rolling(5).mean()
-                        df_min['Breakout'] = (df_min['Close'] > df_min['High'].shift(1).rolling(20).max()) & (df_min['Volume'] > df_min['Vol_MA5'] * 1.5)
-                        df_min['Pullback'] = (df_min['MA20'] > df_min['MA20'].shift(3)) & (df_min['Low'] <= df_min['MA20'] * 1.005) & (df_min['Close'] >= df_min['MA20'] * 0.998) & (df_min['Volume'] < df_min['Vol_MA5'])
                         
                         c_p, h_10m = df_min['Close'].iloc[-1], df_min['High'].iloc[-10:].max()
                         
@@ -542,45 +538,27 @@ else:
                         elif c_p >= h_10m * 0.98 and not (df_min['MA5'].iloc[-1] > df_min['MA20'].iloc[-1] and df_min['MA5'].iloc[-2] <= df_min['MA20'].iloc[-2]): st.warning(f"⚠️ **[추격매수 경고]** **{target_name}** 종목은 가짜 돌파에 걸릴 확률이 높으니 관망하십시오.")
                         elif df_min['MA5'].iloc[-1] > df_min['MA20'].iloc[-1] and df_min['MA5'].iloc[-2] <= df_min['MA20'].iloc[-2] and df_min['Volume'].iloc[-1] > df_min['Vol_MA5'].iloc[-1] * 1.5 and c_p < h_10m * 0.96: st.success(f"🚀 **[정석 무릎자리]** **{target_name}** 정배열 초입 돌파가 확인된 타점입니다.")
                         else: st.info(f"⚪ **[안전 지대]** **{target_name}** 기준선 리스크를 준수 중입니다.")
-                        
-                        df_min['Diff'] = df_min['Close'].diff().fillna(0)
-                        min_price, max_price = df_min['Low'].min(), df_min['High'].max()
-                        price_margin = (max_price - min_price) * 0.1 if max_price != min_price else min_price * 0.01
-                        
-                        fig_stock = go.Figure()
-                        fig_stock.add_trace(go.Candlestick(x=df_min.index, open=df_min['Open'], high=df_min['High'], low=df_min['Low'], close=df_min['Close'], increasing_line_color='#ff4b4b', decreasing_line_color='#4c6198', name="주가"))
-                        fig_stock.add_trace(go.Scatter(x=df_min.index, y=df_min['MA5'], mode='lines', line=dict(color='#ff9900', width=1.5), name="5분선"))
-                        fig_stock.add_trace(go.Scatter(x=df_min.index, y=df_min['MA20'], mode='lines', line=dict(color='#cc00ff', width=1.5), name="20분선"))
-                        
-                        bo_d, pb_d = df_min[df_min['Breakout']], df_min[df_min['Pullback']]
-                        if not bo_d.empty: fig_stock.add_trace(go.Scatter(x=bo_d.index, y=bo_d['High'] + price_margin*0.2, mode='markers+text', marker=dict(symbol='triangle-down', size=10, color='red'), text="🔥돌파", textposition="top center", textfont=dict(color='red', size=11, weight='bold'), name="돌파"))
-                        if not pb_d.empty: fig_stock.add_trace(go.Scatter(x=pb_d.index, y=pb_d['Low'] - price_margin*0.2, mode='markers+text', marker=dict(symbol='triangle-up', size=10, color='blue'), text="💧눌림", textposition="bottom center", textfont=dict(color='blue', size=11, weight='bold'), name="눌림"))
-                        fig_stock.add_trace(go.Bar(x=df_min.index, y=df_min['Volume'], name="거래량", marker_color=['#ff4b4b' if d >= 0 else '#4c6198' for d in df_min['Diff']], opacity=0.7, yaxis='y2'))
-                        
-                        fig_stock.update_layout(template="plotly_white", height=650, margin=dict(l=10, r=60, t=30, b=20), xaxis=dict(showgrid=True, gridcolor='#f0f0f0', type='date', tickformat='%H:%M', rangeslider=dict(visible=False)), yaxis=dict(side='right', showgrid=True, gridcolor='#f0f0f0', tickformat=',', range=[min_price - price_margin, max_price + price_margin], domain=[0.3, 1]), yaxis2=dict(side='right', showgrid=False, tickformat=',', domain=[0, 0.2]), hovermode='x unified', legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
-                        st.plotly_chart(fig_stock, use_container_width=True)
+                        # 💡 여기에 있던 무거운 Plotly 차트 출력 코드를 완전히 삭제했습니다!
             except: pass
 
     # -----------------------------------------------------------------------------
-    # 🌟 [추가 기능] 하단 돌파매매 Top 10 미니 차트 갤러리 (데스크톱 전용)
+    # 🌟 하단 돌파매매 Top 10 미니 차트 갤러리 (데스크톱 전용)
     # -----------------------------------------------------------------------------
     st.markdown("---")
     st.subheader("🔥 실시간 돌파매매 Top 10 차트 갤러리")
 
     if not output_df.empty:
-        # '돌파매매' 상태인 종목을 최우선으로, 부족하면 전체 순위 순으로 10개 채우기
         breakout_df = output_df[output_df['실시간 상태'].str.contains("돌파", na=False)]
         rest_df = output_df[~output_df['종목코드'].isin(breakout_df['종목코드'])]
         gallery_df = pd.concat([breakout_df, rest_df]).head(10)
 
-        cols = st.columns(5) # 5개씩 가로로 배치 (자동으로 2줄 형성)
+        cols = st.columns(5)
         with st.spinner("돌파매매 상위 10개 종목의 실시간 틱 차트를 불러오는 중입니다..."):
             for i, (idx, row) in enumerate(gallery_df.iterrows()):
                 col = cols[i % 5]
                 t_code, t_name, t_rate, t_state = row['종목코드'], row['종목명'], row['전일 상승률'], row['실시간 상태']
                 
                 with col:
-                    # 각 종목 카드 UI
                     st.markdown(f"""
                         <div style="background-color:rgba(30,41,59,0.5); padding:10px; border-radius:10px; border:1px solid #334155; margin-bottom:5px;">
                             <div style="font-size:16px; font-weight:bold; color:white;">{t_name}</div>
@@ -595,22 +573,16 @@ else:
                     try:
                         res = requests.get(url, headers=headers, params=params, timeout=3).json()
                         if res.get('rt_cd') == '0' and 'output2' in res:
-                            min_data = res['output2'][:30][::-1] # 최근 30분 데이터
+                            min_data = res['output2'][:30][::-1] 
                             if len(min_data) > 2:
                                 prices = [float(m['stck_prpr']) for m in min_data]
                                 times = [m['stck_cntg_hour'] for m in min_data]
                                 color = "#ef4444" if prices[-1] >= prices[0] else "#3b82f6"
                                 
-                                # 미니 스파크라인 차트 생성
                                 fig = go.Figure(go.Scatter(x=times, y=prices, mode='lines', line=dict(color=color, width=2.5)))
                                 fig.update_layout(
-                                    margin=dict(l=0, r=0, t=5, b=5),
-                                    height=80,
-                                    xaxis=dict(visible=False),
-                                    yaxis=dict(visible=False),
-                                    plot_bgcolor="rgba(0,0,0,0)",
-                                    paper_bgcolor="rgba(0,0,0,0)",
-                                    hovermode=False
+                                    margin=dict(l=0, r=0, t=5, b=5), height=80, xaxis=dict(visible=False), yaxis=dict(visible=False),
+                                    plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)", hovermode=False
                                 )
                                 st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
                             else:
@@ -618,4 +590,4 @@ else:
                     except:
                         st.caption("차트 로드 실패")
                         
-                    time.sleep(0.05) # 한국투자증권 API 초당 20건 제한 회피 (안전장치)
+                    time.sleep(0.05)
