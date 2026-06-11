@@ -538,11 +538,10 @@ else:
                         elif c_p >= h_10m * 0.98 and not (df_min['MA5'].iloc[-1] > df_min['MA20'].iloc[-1] and df_min['MA5'].iloc[-2] <= df_min['MA20'].iloc[-2]): st.warning(f"⚠️ **[추격매수 경고]** **{target_name}** 종목은 가짜 돌파에 걸릴 확률이 높으니 관망하십시오.")
                         elif df_min['MA5'].iloc[-1] > df_min['MA20'].iloc[-1] and df_min['MA5'].iloc[-2] <= df_min['MA20'].iloc[-2] and df_min['Volume'].iloc[-1] > df_min['Vol_MA5'].iloc[-1] * 1.5 and c_p < h_10m * 0.96: st.success(f"🚀 **[정석 무릎자리]** **{target_name}** 정배열 초입 돌파가 확인된 타점입니다.")
                         else: st.info(f"⚪ **[안전 지대]** **{target_name}** 기준선 리스크를 준수 중입니다.")
-                        # 💡 여기에 있던 무거운 Plotly 차트 출력 코드를 완전히 삭제했습니다!
             except: pass
 
     # -----------------------------------------------------------------------------
-    # 🌟 하단 돌파매매 Top 10 미니 차트 갤러리 (데스크톱 전용)
+    # 🌟 하단 돌파매매 Top 10 미니 차트 갤러리 (현재가 추가 버전)
     # -----------------------------------------------------------------------------
     st.markdown("---")
     st.subheader("🔥 실시간 돌파매매 Top 10 차트 갤러리")
@@ -556,13 +555,18 @@ else:
         with st.spinner("돌파매매 상위 10개 종목의 실시간 틱 차트를 불러오는 중입니다..."):
             for i, (idx, row) in enumerate(gallery_df.iterrows()):
                 col = cols[i % 5]
-                t_code, t_name, t_rate, t_state = row['종목코드'], row['종목명'], row['전일 상승률'], row['실시간 상태']
+                # 💡 데이터를 불러올 때 '현재가' 데이터도 함께 뽑아냅니다.
+                t_code, t_name, t_price, t_rate, t_state = row['종목코드'], row['종목명'], row['전일 종가(현재가)'], row['전일 상승률'], row['실시간 상태']
                 
                 with col:
+                    # 💡 카드 디자인 HTML 수정: 종목명 우측에 현재가가 배치되도록 코드를 변경했습니다.
                     st.markdown(f"""
                         <div style="background-color:rgba(30,41,59,0.5); padding:10px; border-radius:10px; border:1px solid #334155; margin-bottom:5px;">
-                            <div style="font-size:16px; font-weight:bold; color:white;">{t_name}</div>
-                            <div style="font-size:13px; color:{'#ef4444' if '+' in t_rate else '#3b82f6'};">{t_rate} <span style="font-size:11px; color:#facc15; margin-left:5px;">{t_state}</span></div>
+                            <div style="display:flex; justify-content:space-between; align-items:center;">
+                                <div style="font-size:15px; font-weight:bold; color:white;">{t_name}</div>
+                                <div style="font-size:14px; font-weight:bold; color:#e2e8f0;">{t_price}</div>
+                            </div>
+                            <div style="font-size:13px; color:{'#ef4444' if '+' in t_rate else '#3b82f6'}; margin-top:3px;">{t_rate} <span style="font-size:11px; color:#facc15; margin-left:5px;">{t_state}</span></div>
                         </div>
                     """, unsafe_allow_html=True)
                     
