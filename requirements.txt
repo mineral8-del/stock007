@@ -11,3 +11,9 @@ joblib
 tensorflow==2.21.0
 tensorflow
 streamlit-autorefresh
+edge-tts
+google-genai
+
+
+# 💡 스트림릿 무료 서버는 메모리가 작아서 가벼운 CPU용 텐서플로우를 설치해야 튕기지 않습니다.
+tensorflow-cpu
